@@ -1,5 +1,3 @@
-'use strict';
-
 const _ = require('lodash');
 const expect = require('expect.js');
 const Promise = require('bluebird');
@@ -216,7 +214,7 @@ module.exports = session => {
           }
         ]);
       },
-      {disableJoin: true}
+      { disableJoin: true }
     );
 
     test('model1Relation1.^2', models => {
@@ -317,7 +315,7 @@ module.exports = session => {
           }
         },
         disableWhereIn: true,
-        eagerOptions: {minimize: true}
+        eagerOptions: { minimize: true }
       }
     );
 
@@ -952,7 +950,7 @@ module.exports = session => {
               ]);
             });
         },
-        {concurrency: 1}
+        { concurrency: 1 }
       );
     });
 
@@ -961,7 +959,7 @@ module.exports = session => {
         .select('id')
         .findById(1)
         .eager('[model1Relation1, model1Relation2.model2Relation1]')
-        .internalOptions({keepImplicitJoinProps: true})
+        .internalOptions({ keepImplicitJoinProps: true })
         .modifyEager('model1Relation1', qb => qb.select('Model1.id'))
         .modifyEager('model1Relation2', qb => qb.select('model2.id_col').orderBy('model2.id_col'))
         .modifyEager('model1Relation2.model2Relation1', qb =>
@@ -1009,6 +1007,17 @@ module.exports = session => {
         });
     });
 
+    it('range should work', () => {
+      return Model1.query()
+        .where('id', 1)
+        .eager('[model1Relation1, model1Relation2]')
+        .range(0, 0)
+        .then(res => {
+          expect(res.results[0].model1Relation1.id).to.equal(2);
+          expect(res.results[0].model1Relation2).to.have.length(2);
+        });
+    });
+
     describe('JoinEagerAlgorithm', () => {
       it('select should work', () => {
         return Model1.query()
@@ -1018,6 +1027,117 @@ module.exports = session => {
           .where('model1Relation2:model2Relation1.id', 6)
           .eager('[model1Relation1, model1Relation2.model2Relation1]')
           .eagerAlgorithm(Model1.JoinEagerAlgorithm)
+          .then(models => {
+            expect(models).to.eql([
+              {
+                id: 1,
+                model1Prop1: 'hello 1',
+                $afterGetCalled: 1,
+
+                model1Relation1: {
+                  id: 2,
+                  model1Id: 3,
+                  model1Prop1: 'hello 2',
+                  model1Prop2: null,
+                  $afterGetCalled: 1
+                },
+
+                model1Relation2: [
+                  {
+                    idCol: 2,
+                    model1Id: 1,
+                    model2Prop1: 'hejsan 2',
+                    model2Prop2: null,
+                    $afterGetCalled: 1,
+
+                    model2Relation1: [
+                      {
+                        id: 6,
+                        model1Id: 7,
+                        model1Prop1: 'hello 6',
+                        model1Prop2: null,
+                        aliasedExtra: 'extra 6',
+                        $afterGetCalled: 1
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]);
+          });
+      });
+
+      it('should be able to change the join type', () => {
+        return Model1.query()
+          .select('Model1.id', 'Model1.model1Prop1')
+          .joinEager('model1Relation2')
+          .eagerOptions({ joinOperation: 'innerJoin' })
+          .orderBy(['Model1.id', 'model1Relation2.id_col'])
+          .then(models => {
+            // With innerJoin we should only get `Model1` instances that have one
+            // or more `model2Relation2` relations.
+            expect(models).to.eql([
+              {
+                id: 1,
+                model1Prop1: 'hello 1',
+                $afterGetCalled: 1,
+                model1Relation2: [
+                  {
+                    idCol: 1,
+                    model1Id: 1,
+                    model2Prop1: 'hejsan 1',
+                    model2Prop2: null,
+                    $afterGetCalled: 1
+                  },
+                  {
+                    idCol: 2,
+                    model1Id: 1,
+                    model2Prop1: 'hejsan 2',
+                    model2Prop2: null,
+                    $afterGetCalled: 1
+                  }
+                ]
+              },
+              {
+                id: 4,
+                model1Prop1: 'hello 4',
+                $afterGetCalled: 1,
+                model1Relation2: [
+                  {
+                    idCol: 4,
+                    model1Id: 4,
+                    model2Prop1: 'hejsan 4',
+                    model2Prop2: null,
+                    $afterGetCalled: 1
+                  }
+                ]
+              },
+              {
+                id: 6,
+                model1Prop1: 'hello 6',
+                $afterGetCalled: 1,
+                model1Relation2: [
+                  {
+                    idCol: 3,
+                    model1Id: 6,
+                    model2Prop1: 'hejsan 3',
+                    model2Prop2: null,
+                    $afterGetCalled: 1
+                  }
+                ]
+              }
+            ]);
+          });
+      });
+
+      it('should be able to change the separator', () => {
+        return Model1.query()
+          .select('Model1.id', 'Model1.model1Prop1')
+          .where('Model1.id', 1)
+          .where('model1Relation2.id_col', 2)
+          .where('model1Relation2->model2Relation1.id', 6)
+          .joinEager('[model1Relation1, model1Relation2.model2Relation1]')
+          .eagerOptions({ separator: '->' })
           .then(models => {
             expect(models).to.eql([
               {
@@ -1185,7 +1305,9 @@ module.exports = session => {
             done(new Error('should not get here'));
           })
           .catch(err => {
-            expect(err.data.eager).to.equal(
+            expect(err).to.be.a(ValidationError);
+            expect(err.type).to.equal('RelationExpression');
+            expect(err.message).to.equal(
               'identifier model1Relation1:model1Relation1:model1Relation1:model1Relation1:id is over 63 characters long and would be truncated by the database engine.'
             );
             done();
@@ -1198,11 +1320,11 @@ module.exports = session => {
           .where('Model1.id', 1)
           .eager('[model1Relation1.model1Relation1.model1Relation1.model1Relation1]')
           .eagerAlgorithm(Model1.JoinEagerAlgorithm)
-          .eagerOptions({minimize: false})
+          .eagerOptions({ minimize: false })
           .runBefore((result, builder) => {
             // Call in runBefore to test the EeagerOperation.clone method.
             // This doesn't need to be called in a runBefore.
-            builder.eagerOptions({minimize: true});
+            builder.eagerOptions({ minimize: true });
           })
           .then(models => {
             expect(models).to.eql([
@@ -1251,11 +1373,13 @@ module.exports = session => {
             done(new Error('should not get here'));
           })
           .catch(err => {
-            expect(err.data.eager).to.equal(
+            expect(err.type).to.equal('RelationExpression');
+            expect(err.message).to.equal(
               'recursion depth of eager expression model1Relation1.^ too big for JoinEagerAlgorithm'
             );
             done();
-          });
+          })
+          .catch(done);
       });
 
       it('should fail if given missing filter', done => {
@@ -1265,9 +1389,12 @@ module.exports = session => {
           .then(() => {
             done(new Error('should not get here'));
           })
-          .catch(error => {
-            expect(error).to.be.a(ValidationError);
-            expect(error.data).to.have.property('eager');
+          .catch(err => {
+            expect(err).to.be.a(ValidationError);
+            expect(err.type).to.equal('RelationExpression');
+            expect(err.message).to.equal(
+              'could not find filter "missingFilter" for relation "model1Relation2"'
+            );
             done();
           })
           .catch(done);
@@ -1281,7 +1408,29 @@ module.exports = session => {
             throw new Error('should not get here');
           })
           .catch(err => {
-            expect(err.data).to.have.property('eager');
+            expect(err).to.be.a(ValidationError);
+            expect(err.type).to.equal('RelationExpression');
+            expect(err.message).to.equal(
+              'unknown relation "invalidRelation" in an eager expression'
+            );
+            done();
+          })
+          .catch(done);
+      });
+
+      it('should fail if given invalid relation expression', done => {
+        Model1.query()
+          .where('id', 1)
+          .eager('invalidRelation')
+          .then(() => {
+            throw new Error('should not get here');
+          })
+          .catch(err => {
+            expect(err).to.be.a(ValidationError);
+            expect(err.type).to.equal('RelationExpression');
+            expect(err.message).to.equal(
+              'unknown relation "invalidRelation" in an eager expression'
+            );
             done();
           })
           .catch(done);
@@ -1931,27 +2080,27 @@ module.exports = session => {
                 expect(models).to.eql([
                   {
                     model1Prop1: 'hello 8',
-                    model1Relation1: {model1Prop1: 'hello 9', $afterGetCalled: 1},
+                    model1Relation1: { model1Prop1: 'hello 9', $afterGetCalled: 1 },
                     $afterGetCalled: 1
                   },
                   {
                     model1Prop1: 'hello 6',
-                    model1Relation1: {model1Prop1: 'hello 7', $afterGetCalled: 1},
+                    model1Relation1: { model1Prop1: 'hello 7', $afterGetCalled: 1 },
                     $afterGetCalled: 1
                   },
                   {
                     model1Prop1: 'hello 3',
-                    model1Relation1: {model1Prop1: 'hello 4', $afterGetCalled: 1},
+                    model1Relation1: { model1Prop1: 'hello 4', $afterGetCalled: 1 },
                     $afterGetCalled: 1
                   },
                   {
                     model1Prop1: 'hello 2',
-                    model1Relation1: {model1Prop1: 'hello 3', $afterGetCalled: 1},
+                    model1Relation1: { model1Prop1: 'hello 3', $afterGetCalled: 1 },
                     $afterGetCalled: 1
                   },
                   {
                     model1Prop1: 'hello 1',
-                    model1Relation1: {model1Prop1: 'hello 2', $afterGetCalled: 1},
+                    model1Relation1: { model1Prop1: 'hello 2', $afterGetCalled: 1 },
                     $afterGetCalled: 1
                   }
                 ]);
@@ -2175,7 +2324,7 @@ module.exports = session => {
                 });
               });
           },
-          {concurrency: 1}
+          { concurrency: 1 }
         );
       });
 
@@ -2255,7 +2404,7 @@ module.exports = session => {
                   f1: builder => builder.select('id')
                 }
               )
-              .findOne({'m1.id': 1})
+              .findOne({ 'm1.id': 1 })
               .then(model => {
                 expect(model).to.eql({
                   id: 1,
@@ -2268,7 +2417,7 @@ module.exports = session => {
                 });
               });
           },
-          {concurrency: 1}
+          { concurrency: 1 }
         );
       });
     });
@@ -2349,7 +2498,7 @@ module.exports = session => {
       });
     }
 
-    if (isPostgres(session.knex))
+    if (session.isPostgres())
       describe.skip('big data', () => {
         let graph = null;
 
@@ -2435,7 +2584,7 @@ module.exports = session => {
                   expect(got).to.eql(expected);
                 });
             },
-            {concurrency: 1}
+            { concurrency: 1 }
           );
         });
 

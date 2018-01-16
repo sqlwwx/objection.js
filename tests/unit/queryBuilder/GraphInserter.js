@@ -1,5 +1,3 @@
-'use strict';
-
 const _ = require('lodash'),
   Knex = require('knex'),
   expect = require('expect.js'),
@@ -19,7 +17,7 @@ describe('GraphInserter', () => {
   let Movie = null;
 
   before(() => {
-    let knex = Knex({client: 'pg'});
+    let knex = Knex({ client: 'pg' });
 
     mockKnex = knexMocker(knex, function(mock, oldImpl, args) {
       executedQueries.push(this.toString());
@@ -582,7 +580,10 @@ describe('GraphInserter', () => {
         models: models,
         // children.pets is missing.
         allowedRelations: '[parent, children, pets, movies.actors]',
-        expectErrorWithData: {allowedRelations: 'trying to insert an unallowed relation'}
+        expectError: {
+          type: 'UnallowedRelation',
+          message: 'trying to insert an unallowed relation'
+        }
       });
     });
 
@@ -592,7 +593,10 @@ describe('GraphInserter', () => {
         models: models,
         // movies.actors missing.
         allowedRelations: '[parent, children.pets, pets, movies]',
-        expectErrorWithData: {allowedRelations: 'trying to insert an unallowed relation'}
+        expectError: {
+          type: 'UnallowedRelation',
+          message: 'trying to insert an unallowed relation'
+        }
       });
     });
 
@@ -602,7 +606,10 @@ describe('GraphInserter', () => {
         models: models,
         // parent missing.
         allowedRelations: '[children.pets, pets, movies.actors]',
-        expectErrorWithData: {allowedRelations: 'trying to insert an unallowed relation'}
+        expectError: {
+          type: 'UnallowedRelation',
+          message: 'trying to insert an unallowed relation'
+        }
       });
     });
   });
@@ -962,7 +969,10 @@ describe('GraphInserter', () => {
           }
         ],
         modelClass: Person,
-        expectErrorWithData: {cyclic: 'the object graph contains cyclic references'}
+        expectError: {
+          type: 'InvalidGraph',
+          message: 'the object graph contains cyclic references'
+        }
       });
 
       test({
@@ -978,7 +988,10 @@ describe('GraphInserter', () => {
           }
         ],
         modelClass: Person,
-        expectErrorWithData: {cyclic: 'the object graph contains cyclic references'}
+        expectError: {
+          type: 'InvalidGraph',
+          message: 'the object graph contains cyclic references'
+        }
       });
 
       test({
@@ -1004,7 +1017,10 @@ describe('GraphInserter', () => {
           }
         ],
         modelClass: Person,
-        expectErrorWithData: {cyclic: 'the object graph contains cyclic references'}
+        expectError: {
+          type: 'InvalidGraph',
+          message: 'the object graph contains cyclic references'
+        }
       });
 
       test({
@@ -1023,7 +1039,10 @@ describe('GraphInserter', () => {
           }
         ],
         modelClass: Person,
-        expectErrorWithData: {cyclic: 'the object graph contains cyclic references'}
+        expectError: {
+          type: 'InvalidGraph',
+          message: 'the object graph contains cyclic references'
+        }
       });
 
       test({
@@ -1036,7 +1055,10 @@ describe('GraphInserter', () => {
           }
         ],
         modelClass: Person,
-        expectErrorWithData: {cyclic: 'the object graph contains cyclic references'}
+        expectError: {
+          type: 'InvalidGraph',
+          message: 'the object graph contains cyclic references'
+        }
       });
     });
 
@@ -1202,7 +1224,10 @@ describe('GraphInserter', () => {
           }
         ],
         modelClass: Person,
-        expectErrorWithData: {ref: 'could not resolve reference "child"'}
+        expectError: {
+          message: 'could not resolve reference "child"',
+          type: 'InvalidGraph'
+        }
       });
     });
   });
@@ -1408,8 +1433,9 @@ describe('GraphInserter', () => {
       test({
         models: models,
         modelClass: Person,
-        expectErrorWithData: {
-          ref: 'could not resolve reference "#ref{doesNotExist.id}"'
+        expectError: {
+          type: 'InvalidGraph',
+          message: 'could not resolve reference "#ref{doesNotExist.id}"'
         }
       });
     });
@@ -1441,9 +1467,10 @@ describe('GraphInserter', () => {
 
     let inserter;
 
-    if (opt.expectErrorWithData) {
+    if (opt.expectError) {
       expect(createInserter).to.throwException(err => {
-        expect(err.data).to.eql(opt.expectErrorWithData);
+        expect(err.type).to.equal(opt.expectError.type);
+        expect(err.message).to.eql(opt.expectError.message);
       });
       return;
     } else {
@@ -1455,21 +1482,14 @@ describe('GraphInserter', () => {
 
     return inserter
       .execute(tableInsertion => {
-        let ret = _.clone(tableInsertion.models);
-
-        _.each(tableInsertion.models, (model, idx) => {
-          if (_.isArray(opt.models)) {
-            expect(opt.models.indexOf(model) !== -1).to.equal(tableInsertion.isInputModel[idx]);
-          } else {
-            expect(model === opt.models).to.equal(tableInsertion.isInputModel[idx]);
-          }
-        });
+        let models = tableInsertion.items.map(it => it.model);
+        let ret = _.clone(models);
 
         insertions.push({
-          tableName: tableInsertion.modelClass.tableName,
-          models: _.map(tableInsertion.models, model => {
+          tableName: tableInsertion.modelClass.getTableName(),
+          models: _.map(models, model => {
             if (model instanceof Model) {
-              return model.$toJson(true);
+              return model.$toJson({ shallow: true });
             } else {
               return _.clone(model);
             }

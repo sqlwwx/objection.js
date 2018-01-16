@@ -18,7 +18,7 @@ Person
 ```js
 Person
   .query()
-  .select(Person.raw('coalesce(sum(??), 0) as ??', ['age', 'childAgeSum']))
+  .select(raw('coalesce(sum(??), 0) as ??', ['age', 'childAgeSum']))
   .groupBy('parentId')
   .then(childAgeSums => {
     console.log(childAgeSums[0].childAgeSum);
@@ -70,13 +70,21 @@ json fields.
 
 Json queries currently only work with postgres.
 
-## Change id column
+## Custom id column
 
 ```js
 class Person extends Model {
   static get idColumn() {
     return 'person_id';
   }
+}
+```
+
+> ESNext:
+
+```js
+class Person extends Model {
+  static idColumn = 'person_id';
 }
 ```
 
@@ -143,12 +151,14 @@ class MyCustomValidator extends Validator {
     const json = args.json;
 
     // `ModelOptions` object. If your custom validator sets default
-    // values, you need to check the `opt.patch` boolean. If it is true
-    // we are validating a patch object, the defaults should not be set.
+    // values or has the concept of required properties, you need to
+    // check the `opt.patch` boolean. If it is true we are validating
+    // a patch object (an object with a subset of model's properties).
     const opt = args.options;
 
     // A context object shared between the validation methods. A new
-    // object is created for each validation operation.
+    // object is created for each validation operation. You can store
+    // whatever you need in this object.
     const ctx = args.ctx;
 
     // Do your validation here and throw any exception if the
@@ -415,6 +425,9 @@ class Issue extends Model {
         relation: Model.HasManyRelation,
         modelClass: Comment,
         filter: {commentableType: 'Issue'},
+        beforeInsert(model) {
+          model.commentableType = 'Issue';
+        },
         join: {
           from: 'Issue.id',
           to: 'Comment.commentableId'
@@ -431,6 +444,9 @@ class PullRequest extends Model {
         relation: Model.HasManyRelation,
         modelClass: Comment,
         filter: {commentableType: 'PullRequest'},
+        beforeInsert(model) {
+          model.commentableType = 'PullRequest';
+        },
         join: {
           from: 'PullRequest.id',
           to: 'Comment.commentableId'
@@ -442,21 +458,12 @@ class PullRequest extends Model {
 ```
 
 > The `{commentableType: 'Type'}` filter adds a `WHERE "commentableType" = 'Type'` clause to the relation fetch
-> query. It doesn't automatically set the type when you insert a new comment. You have to set the `commentableType`
-> manually:
+> query. The `beforeInsert` hook takes care of setting the type on insert.
 
-```js
-someIssue
-  .$relatedQuery('comments')
-  .insert({text: 'blaa', commentableType: 'Issue'})
-  .then(...)
-```
 
-Creating polymorphic associations isn't as easy as it could be at the moment, but it can be done using
-custom filters for relations. Let's assume we have tables `Comment`, `Issue` and `PullRequest`. Both
-`Issue` and `PullRequest` can have a list of comments. `Comment` has a column `commentableId` to hold
-the foreign key and `commentableType` to hold the related model type. Check out the first example for
-how to create relations for this setup ➔
+Let's assume we have tables `Comment`, `Issue` and `PullRequest`. Both `Issue` and `PullRequest` can have a list of comments.
+`Comment` has a column `commentableId` to hold the foreign key and `commentableType` to hold the related model type. Check out
+the first example for how to create relations for this setup ➔
 
 This kind of associations don't have referential integrity and should be avoided if possible. Instead, consider
 using the _exclusive arc table_ pattern discussed [here](https://github.com/Vincit/objection.js/issues/19#issuecomment-291621442).
@@ -671,6 +678,33 @@ Here's a list of methods that may help working with composite keys:
  * [`patchAndFetchById`](#patchandfetchbyid)
  * [`$id`](#_s_id)
  * [`$values`](#_s_values)
+
+## Getting count of relations
+
+Let's say you have a `Tweet` model and a `Like` model. `Tweet` has a `HasManyRelation` named `likers` to `Like` table.
+Now let's assume you'd like to fetch a list of `Tweet`s and get the number of likes for each of them without fetching
+the actual `Like` rows. This cannot be easily achieved using `eager` because of the way the queries are optimized
+(you can read more [here](#eager)). You can leverage SQL's subqueries and the [`relatedQuery`](#relatedquery) helper:
+
+```js
+const tweets = await Tweet
+  .query()
+  .select(
+    'Tweet.*',
+    Tweet.relatedQuery('likers').count().as('numberOfLikes')
+  );
+
+console.log(tweets[4].numberOfLikes);
+```
+
+The generated SQL is something like this:
+
+```sql
+select "Tweet".*, (select count(*) from "Like" where "Like"."tweetId" = "Tweet"."id") as "numberOfLikes" from "Tweet"
+```
+
+Naturally you can add as many subquery selects as you like. For example you could also get the count of retweets
+in the same query. [`relatedQuery`](#relatedquery) method works with all relations and not just `HasManyRelation`.
 
 ## Indexing PostgreSQL JSONB columns
 

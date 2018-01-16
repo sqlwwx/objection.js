@@ -1,5 +1,3 @@
-'use strict';
-
 const _ = require('lodash');
 const path = require('path');
 const Promise = require('bluebird');
@@ -46,7 +44,8 @@ class TestSession {
         return {
           'select:id': (builder) => builder.select('id'),
           'select:model1Prop1': (builder) => builder.select('model1Prop1'),
-          'orderBy:model1Prop1': (builder) => builder.orderBy('model1Prop1')
+          'orderBy:model1Prop1': (builder) => builder.orderBy('model1Prop1'),
+          'idGreaterThan': (builder) => builder.where('id', '>', builder.context().filterArgs[0])
         };
       }
 
@@ -142,11 +141,11 @@ class TestSession {
     }
 
     [
-      ['$beforeInsert', 5],
-      ['$afterInsert', 1],
+      ['$beforeInsert', 1],
+      ['$afterInsert', 0],
       ['$beforeDelete', 1],
       ['$afterDelete', 1],
-      ['$beforeUpdate', 5, (self, args) => self.$beforeUpdateOptions = _.cloneDeep(args[0])],
+      ['$beforeUpdate', 1, (self, args) => self.$beforeUpdateOptions = _.cloneDeep(args[0])],
       ['$afterUpdate', 1, (self, args) => self.$afterUpdateOptions = _.cloneDeep(args[0])],
       ['$afterGet', 1]
     ].forEach(hook => {
@@ -263,17 +262,29 @@ class TestSession {
 
 TestSession.staticInitCalled = false;
 TestSession.unhandledRejectionHandlers = [];
+TestSession.hookCounter = 0;
 
-// Creates an asynchronous hook that waits for `delay` milliseconds
-// and then increments a `${name}Called` property.
+// Creates a hook that waits for `delay` milliseconds and then
+// increments a `${name}Called` property. The hook is asynchonous
+// every other time it is called so that the synchronous path is
+// also tested.
 function createHook(name, delay, extraAction) {
+  const hook = (model, args) => {
+    // Increment the property so that it can be checked in the tests.
+    inc(model, `${name}Called`);
+
+    // Optionally run the extraAction function.
+    (extraAction || _.noop)(model, args);
+  };
+
   return function () {
     const args = arguments;
 
-    return Promise.delay(delay).then(() => {
-      inc(this, `${name}Called`);
-      (extraAction || _.noop)(this, args);
-    });
+    if (TestSession.hookCounter++ % 2 === 0) {
+      return hook(this, args);
+    } else {
+      return Promise.delay(delay).then(() => hook(this, args));
+    }
   };
 }
 

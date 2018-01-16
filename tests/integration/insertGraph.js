@@ -1,5 +1,3 @@
-'use strict';
-
 const _ = require('lodash');
 const utils = require('../../lib/utils/knexUtils');
 const expect = require('expect.js');
@@ -129,10 +127,10 @@ module.exports = session => {
             type: 'object',
             additionalProperties: false,
             properties: {
-              id: {type: 'number'},
-              model1Prop1: {type: 'string'},
-              model1Prop2: {type: 'number'},
-              model1Id: {type: 'number'}
+              id: { type: 'number' },
+              model1Prop1: { type: 'string' },
+              model1Prop2: { type: 'number' },
+              model1Id: { type: 'number' }
             }
           };
 
@@ -202,7 +200,7 @@ module.exports = session => {
 
             expect(inserted.toJSON()).to.eql({
               id: 4,
-              model1Relation2: [{model1Id: 4, idCol: 100}, {model1Id: 4, idCol: 101}]
+              model1Relation2: [{ model1Id: 4, idCol: 100 }, { model1Id: 4, idCol: 101 }]
             });
 
             return Model1.query()
@@ -219,63 +217,99 @@ module.exports = session => {
               model1Prop2: null,
               $afterGetCalled: 1,
               model1Relation2: [
-                {idCol: 100, model1Id: 4, model2Prop1: '10', model2Prop2: null, $afterGetCalled: 1},
-                {idCol: 101, model1Id: 4, model2Prop1: '50', model2Prop2: null, $afterGetCalled: 1}
+                {
+                  idCol: 100,
+                  model1Id: 4,
+                  model2Prop1: '10',
+                  model2Prop2: null,
+                  $afterGetCalled: 1
+                },
+                {
+                  idCol: 101,
+                  model1Id: 4,
+                  model2Prop1: '50',
+                  model2Prop2: null,
+                  $afterGetCalled: 1
+                }
               ]
             });
           });
       });
 
-      it('should validate models upon insertion', done => {
-        insertion.model1Relation1.model1Prop1 = 666;
+      const testValidation = (modifyGraph, expectedProperty) => {
+        return done => {
+          const graph = _.cloneDeep(insertion);
+          modifyGraph(graph);
 
-        transaction(Model1, Model2, (Model1, Model2) => {
-          // We can modify Model1 and Model2 here since it is a subclass of the actual
-          // models shared between tests.
-          Model1.jsonSchema = {
-            type: 'object',
-            properties: {
-              id: {type: 'integer'},
-              model1Id: {type: 'integer'},
-              model1Prop1: {type: 'string'},
-              model1Prop2: {type: 'integer'}
-            }
-          };
+          transaction(Model1, Model2, (Model1, Model2) => {
+            // We can modify Model1 and Model2 here since it is a subclass of the actual
+            // models shared between tests.
+            Model1.jsonSchema = {
+              type: 'object',
+              properties: {
+                id: { type: 'integer' },
+                model1Id: { type: 'integer' },
+                model1Prop1: { type: 'string' },
+                model1Prop2: { type: 'integer' }
+              }
+            };
 
-          Model2.jsonSchema = {
-            type: 'object',
-            properties: {
-              idCol: {type: 'integer'},
-              model1Id: {type: 'integer'},
-              model2Prop1: {type: 'string'},
-              model2Prop2: {type: 'integer'}
-            }
-          };
+            Model2.jsonSchema = {
+              type: 'object',
+              properties: {
+                idCol: { type: 'integer' },
+                model1Id: { type: 'integer' },
+                model2Prop1: { type: 'string' },
+                model2Prop2: { type: 'integer' }
+              }
+            };
 
-          delete Model1.$$jsonSchema;
-          delete Model2.$$jsonSchema;
+            delete Model1.$$jsonSchema;
+            delete Model2.$$jsonSchema;
 
-          expect(Model1.getJsonSchema()).to.equal(Model1.jsonSchema);
-          expect(Model2.getJsonSchema()).to.equal(Model2.jsonSchema);
+            expect(Model1.getJsonSchema()).to.equal(Model1.jsonSchema);
+            expect(Model2.getJsonSchema()).to.equal(Model2.jsonSchema);
 
-          return Model1.query().insertGraph(insertion);
-        })
-          .then(() => {
-            done(new Error('should not get here'));
+            return Model1.query().insertGraph(graph);
           })
-          .catch(err => {
-            expect(err).to.be.a(ValidationError);
-            expect(err.data).to.have.property('model1Prop1');
+            .then(() => {
+              done(new Error('should not get here'));
+            })
+            .catch(err => {
+              expect(err).to.be.a(ValidationError);
+              expect(err.data).to.have.property(expectedProperty);
 
-            return Promise.all([session.knex('Model1'), session.knex('model2')]);
-          })
-          .spread((rows1, rows2) => {
-            expect(rows1).to.have.length(1);
-            expect(rows2).to.have.length(1);
-            done();
-          })
-          .catch(done);
-      });
+              return Promise.all([session.knex('Model1'), session.knex('model2')]);
+            })
+            .spread((rows1, rows2) => {
+              expect(rows1).to.have.length(1);
+              expect(rows2).to.have.length(1);
+              done();
+            })
+            .catch(done);
+        };
+      };
+
+      it(
+        'should validate models upon insertion and return correct validation paths',
+        testValidation(graph => {
+          graph.model1Relation1.model1Prop1 = 666;
+        }, 'model1Relation1.model1Prop1')
+      );
+
+      it(
+        'should return correct validation paths with has-many relations',
+        testValidation(graph => {
+          graph.model1Relation2[0].model2Prop1 = 666;
+        }, 'model1Relation2[0].model2Prop1')
+      );
+
+      it(
+        'should return correct validation paths with many-to-many relations',
+        testValidation(graph => {
+          graph.model1Relation1.model1Relation3[1].model2Prop1 = 666;
+        }, 'model1Relation1.model1Relation3[1].model2Prop1')
+      );
 
       it('should validate models upon insertion: references in integer columns should be accepted', () => {
         return transaction(Model1, Model2, (Model1, Model2) => {
@@ -284,20 +318,20 @@ module.exports = session => {
           Model1.jsonSchema = {
             type: 'object',
             properties: {
-              id: {type: 'integer'},
-              model1Id: {type: 'integer'},
-              model1Prop1: {type: 'string'},
-              model1Prop2: {type: 'integer'}
+              id: { type: 'integer' },
+              model1Id: { type: 'integer' },
+              model1Prop1: { type: 'string' },
+              model1Prop2: { type: 'integer' }
             }
           };
 
           Model2.jsonSchema = {
             type: 'object',
             properties: {
-              idCol: {type: 'integer'},
-              model1Id: {type: 'integer'},
-              model2Prop1: {type: 'string'},
-              model2Prop2: {type: 'integer'}
+              idCol: { type: 'integer' },
+              model1Id: { type: 'integer' },
+              model2Prop1: { type: 'string' },
+              model2Prop2: { type: 'integer' }
             }
           };
 
@@ -370,9 +404,35 @@ module.exports = session => {
           });
       });
 
+      it('trying to relate a HasManyRelation should throw', done => {
+        Model1.query()
+          .insertGraph(
+            {
+              model1Prop1: 'foo',
+
+              model1Relation2: [
+                {
+                  idCol: population.model1Relation3[0].idCol
+                }
+              ]
+            },
+            {
+              relate: true
+            }
+          )
+          .then(model => done(new Error('should not get here')))
+          .catch(err => {
+            expect(err.message).to.equal(
+              'You cannot relate HasManyRelation or HasOneRelation using insertGraph, because those require update operations. Consider using upsertGraph instead.'
+            );
+            done();
+          })
+          .catch(done);
+      });
+
       it(`relate: ['relation.path'] option should cause models with id to be related instead of inserted`, () => {
         return Model1.query()
-          .insert({model1Prop1: 'howdy', id: 500})
+          .insert({ model1Prop1: 'howdy', id: 500 })
           .then(() => {
             return Model1.query().insertGraph(
               {
@@ -577,6 +637,8 @@ module.exports = session => {
           })
           .catch(err => {
             expect(err instanceof ValidationError).to.equal(true);
+            expect(err.type).to.equal('UnallowedRelation');
+            expect(err.message).to.eql('trying to insert an unallowed relation');
             done();
           })
           .catch(done);
@@ -688,11 +750,11 @@ module.exports = session => {
               return parent.$relatedQuery('model1Relation3');
             })
             .then(models => {
-              let insertion = _.find(models, {model2Prop1: 'howdy'});
+              let insertion = _.find(models, { model2Prop1: 'howdy' });
               return insertion.$relatedQuery('model2Relation1').eager(eagerExpr);
             })
             .then(models => {
-              let model = _.find(models, {model1Prop1: 'root'});
+              let model = _.find(models, { model1Prop1: 'root' });
               return check(model);
             });
         });
@@ -743,7 +805,7 @@ module.exports = session => {
 
       return knex(Model2.tableName).then(rows => {
         // Check that the reference model was only inserted once.
-        expect(_.filter(rows, {model2_prop1: 'child1'})).to.have.length(1);
+        expect(_.filter(rows, { model2_prop1: 'child1' })).to.have.length(1);
       });
     }
 

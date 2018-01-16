@@ -4,9 +4,12 @@ import { join } from 'path';
 
 export default class Animal extends Model {
   readonly id: number;
-  owner: Person;
+  ownerId: number | null;
   name: string;
   species: string;
+
+  // Optional eager relations.
+  owner?: Person;
 
   // Table name is the only required property.
   static tableName = 'Animal';

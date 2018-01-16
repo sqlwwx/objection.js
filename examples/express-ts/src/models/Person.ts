@@ -1,5 +1,7 @@
 import { Model, RelationMappings } from 'objection';
 import { join } from 'path';
+import Animal from './Animal';
+import Movie from './Movie';
 
 export interface Address {
   street: string;
@@ -9,13 +11,19 @@ export interface Address {
 
 export default class Person extends Model {
   readonly id: number;
-  parent: Person;
+  parentId: number | null;
   firstName: string;
   lastName: string;
   age: number;
   address: Address;
   createdAt: Date;
   updatedAt: Date;
+
+  // Optional eager relations.
+  parent?: Person;
+  children?: Person[];
+  pets?: Animal[];
+  movies?: Movie[];
 
   // Table name is the only required property.
   static tableName = 'Person';
@@ -48,7 +56,10 @@ export default class Person extends Model {
   // Where to look for models classes.
   static modelPaths = [__dirname];
 
-  // This object defines the relations to other models.
+  // This object defines the relations to other models. The modelClass strings
+  // will be joined to `modelPaths` to find the class definition, to avoid
+  // require loops. The other solution to avoid require loops is to make
+  // relationMappings a thunk. See Movie.ts for an example.
   static relationMappings: RelationMappings = {
     pets: {
       relation: Model.HasManyRelation,

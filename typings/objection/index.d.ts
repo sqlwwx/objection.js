@@ -4,6 +4,7 @@
 
 /// <reference types="node" />
 import * as knex from 'knex';
+import * as ajv from 'ajv';
 
 export = Objection;
 
@@ -77,7 +78,7 @@ declare namespace Objection {
 
   export interface ColumnNameMappers {
     parse(json: Pojo): Pojo;
-    format(json: Pojo): Pojo
+    format(json: Pojo): Pojo;
   }
 
   export interface KnexMappers {
@@ -95,11 +96,65 @@ declare namespace Objection {
     skipValidation?: boolean;
   }
 
+  export interface ValidatorContext {
+    [key: string]: any;
+  }
+
+  export interface ValidatorArgs {
+    ctx: ValidatorContext;
+    model: Model;
+    json: Pojo;
+    options: ModelOptions;
+  }
+
+  export class Validator {
+    beforeValidate(args: ValidatorArgs): void;
+    validate(args: ValidatorArgs): Pojo;
+    afterValidate(args: ValidatorArgs): void;
+  }
+
+  export interface AjvConfig {
+    onCreateAjv(ajv: ajv.Ajv): void;
+    options?: ajv.Options;
+  }
+
+  export class AjvValidator extends Validator {
+    constructor(config: AjvConfig);
+  }
+
+  export interface CloneOptions {
+    shallow?: boolean;
+  }
+
+  export type ValidationErrorType =
+    | 'ModelValidation'
+    | 'RelationExpression'
+    | 'UnallowedRelation'
+    | 'InvalidGraph';
+
   export class ValidationError extends Error {
-    constructor(errors: any);
+    constructor(args: CreateValidationErrorArgs);
+
     statusCode: number;
-    data: any;
     message: string;
+    data?: ErrorHash | any;
+    type: ValidationErrorType;
+  }
+
+  export interface ValidationErrorItem {
+    message: string;
+    keyword: string;
+    params: Pojo;
+  }
+
+  export interface ErrorHash {
+    [columnName: string]: ValidationErrorItem[];
+  }
+
+  export interface CreateValidationErrorArgs {
+    message?: string;
+    data?: ErrorHash | any;
+    type: ValidationErrorType;
   }
 
   export interface RelationMappings {
@@ -174,8 +229,8 @@ declare namespace Objection {
     [namedFilter: string]: FilterFunction<T>;
   }
 
-  interface RelationExpressionMethod {
-    <T>(relationExpression: RelationExpression): QueryBuilder<T>;
+  interface RelationExpressionMethod<T> {
+    (relationExpression: RelationExpression): QueryBuilder<T>;
   }
 
   interface TraverserFunction {
@@ -260,7 +315,7 @@ declare namespace Objection {
     jsonSchema: JsonSchema;
     idColumn: string | string[];
     modelPaths: string[];
-    relationMappings: RelationMappings;
+    relationMappings: RelationMappings | (() => RelationMappings);
     jsonAttributes: string[];
     virtualAttributes: string[];
     uidProp: string;
@@ -272,6 +327,8 @@ declare namespace Objection {
     defaultEagerOptions?: EagerOptions;
     QueryBuilder: typeof QueryBuilder;
     columnNameMappers: ColumnNameMappers;
+    relatedFindQueryMutates: boolean;
+    relatedInsertQueryMutates: boolean;
 
     raw: knex.RawBuilder;
     fn: knex.FunctionHelper;
@@ -283,12 +340,16 @@ declare namespace Objection {
     HasOneThroughRelation: Relation;
 
     query(trxOrKnex?: Transaction | knex): QueryBuilder<M>;
+    // This can only be used as a subquery so the result model type is irrelevant.
+    relatedQuery(relationName: string): QueryBuilder<any>;
     knex(knex?: knex): knex;
     formatter(): any; // < the knex typings punts here too
     knexQuery(): knex.QueryBuilder;
 
     bindKnex(knex: knex): this;
     bindTransaction(transaction: Transaction): this;
+    createValidator(): Validator;
+    createValidationError(args: CreateValidationErrorArgs): Error;
 
     fromJson(json: object, opt?: ModelOptions): M;
     fromDatabaseJson(row: object): M;
@@ -317,7 +378,7 @@ declare namespace Objection {
     static jsonSchema: JsonSchema;
     static idColumn: string | string[];
     static modelPaths: string[];
-    static relationMappings: RelationMappings;
+    static relationMappings: RelationMappings | (() => RelationMappings);
     static jsonAttributes: string[];
     static virtualAttributes: string[];
     static uidProp: string;
@@ -329,6 +390,8 @@ declare namespace Objection {
     static defaultEagerOptions?: EagerOptions;
     static QueryBuilder: typeof QueryBuilder;
     static columnNameMappers: ColumnNameMappers;
+    static relatedFindQueryMutates: boolean;
+    static relatedInsertQueryMutates: boolean;
 
     static raw: knex.RawBuilder;
     static fn: knex.FunctionHelper;
@@ -344,11 +407,15 @@ declare namespace Objection {
     static NaiveEagerAlgorithm: EagerAlgorithm;
 
     static query<T>(this: Constructor<T>, trxOrKnex?: Transaction | knex): QueryBuilder<T>;
+    // This can only be used as a subquery so the result model type is irrelevant.
+    static relatedQuery(relationName: string): QueryBuilder<any>;
     static knex(knex?: knex): knex;
     static formatter(): any; // < the knex typings punts here too
     static knexQuery(): knex.QueryBuilder;
     static bindKnex<T>(this: T, knex: knex): T;
     static bindTransaction<T>(this: T, transaction: Transaction): T;
+    static createValidator(): Validator;
+    static createValidationError(args: CreateValidationErrorArgs): Error;
 
     // fromJson and fromDatabaseJson both return an instance of Model, not a Model class:
     static fromJson<T>(this: Constructor<T>, json: Pojo, opt?: ModelOptions): T;
@@ -375,23 +442,31 @@ declare namespace Objection {
     $id(id: any): void;
 
     $beforeValidate(jsonSchema: JsonSchema, json: Pojo, opt: ModelOptions): JsonSchema;
-    $validate(): void; // may throw ValidationError if validation fails
+    $validate(json: Pojo, opt: ModelOptions): Pojo; // may throw ValidationError if validation fails
     $afterValidate(json: Pojo, opt: ModelOptions): void; // may throw ValidationError if validation fails
 
     $toDatabaseJson(): object;
-    $toJson(): object;
-    toJSON(): object;
+    $toJson(opt?: CloneOptions): object;
+    toJSON(opt?: CloneOptions): object;
     $parseDatabaseJson(json: Pojo): Pojo;
     $formatDatabaseJson(json: Pojo): Pojo;
     $parseJson(json: Pojo, opt?: ModelOptions): Pojo;
     $formatJson(json: Pojo): Pojo;
     $setJson(json: Pojo, opt?: ModelOptions): this;
     $setDatabaseJson(json: Pojo): this;
+    $setRelated<M extends Model>(
+      relation: String | Relation,
+      related: M | M[] | null | undefined
+    ): this;
+    $appendRelated<M extends Model>(
+      relation: String | Relation,
+      related: M | M[] | null | undefined
+    ): this;
 
     $set(obj: Pojo): this;
     $omit(keys: string | string[] | Properties): this;
     $pick(keys: string | string[] | Properties): this;
-    $clone(): this;
+    $clone(opt?: CloneOptions): this;
 
     /**
      * AKA `reload` in ActiveRecord parlance
@@ -399,9 +474,20 @@ declare namespace Objection {
     $query(trxOrKnex?: Transaction | knex): QueryBuilderSingle<this>;
 
     /**
-     * Users need to explicitly type these calls, as the relationName doesn't
-     * indicate the type (and if it returned Model directly, Partial<Model>
-     * guards are worthless)
+     * If you add model relations as fields, $relatedQuery works
+     * automatically:
+     */
+    $relatedQuery<K extends keyof this>(
+      relationName: K,
+      trxOrKnex?: Transaction | knex
+    ): QueryBuilderSingle<this[K]>;
+
+    // PLEASE NOTE: `$relatedQuery<K extends keyof this>` MUST BE DEFINED
+    // BEFORE `$relatedQuery<M extends Model>`!
+
+    /**
+     * If you don't want to add the fields to your model, you can cast the
+     * call to the expected Model subclass (`$relatedQuery<Animal>('pets')`).
      */
     $relatedQuery<M extends Model>(
       relationName: string,
@@ -409,7 +495,7 @@ declare namespace Objection {
     ): QueryBuilder<M>;
 
     $loadRelated<T>(
-      expression: RelationExpression,
+      expression: keyof this | RelationExpression,
       filters?: Filters<T>,
       trxOrKnex?: Transaction | knex
     ): QueryBuilderSingle<this>;
@@ -444,7 +530,10 @@ declare namespace Objection {
   /**
    * QueryBuilder with one expected result
    */
-  export interface QueryBuilderSingle<T> extends QueryBuilderBase<T>, ThrowIfNotFound, Executable<T> {
+  export interface QueryBuilderSingle<T>
+    extends QueryBuilderBase<T>,
+      ThrowIfNotFound,
+      Executable<T> {
     runAfter(fn: (result: T, builder: this) => any): this;
   }
 
@@ -544,6 +633,7 @@ declare namespace Objection {
 
     findById(id: Id): QueryBuilderOption<T>;
     findById(idOrIds: IdOrIds): this;
+    findByIds(ids: Id[] | Id[][]): this;
     /** findOne is shorthand for .where(...whereArgs).first() */
     findOne: FindOne<T>;
 
@@ -575,6 +665,7 @@ declare namespace Objection {
     patchAndFetch(modelOrObject: Partial<T>): QueryBuilderSingle<T>;
 
     upsertGraph: Upsert<T>;
+    upsertGraphAndFetch: Upsert<T>;
 
     /**
      * @return a Promise of the number of deleted rows
@@ -679,12 +770,12 @@ declare namespace Objection {
     naiveEager(relationExpression: RelationExpression, filters?: FilterExpression<T>): this;
     mergeNaiveEager(relationExpression: RelationExpression, filters?: FilterExpression<T>): this;
 
-    allowEager: RelationExpressionMethod;
+    allowEager: RelationExpressionMethod<T>;
     modifyEager: ModifyEager<T>;
     filterEager: ModifyEager<T>;
 
-    allowInsert: RelationExpressionMethod;
-    allowUpsert: RelationExpressionMethod;
+    allowInsert: RelationExpressionMethod<T>;
+    allowUpsert: RelationExpressionMethod<T>;
 
     modelClass(): typeof Model;
 
@@ -974,7 +1065,7 @@ declare namespace Objection {
     ): QueryBuilder<T>;
     (
       tableName: TableName,
-      columns: {[key: string]: string | number | Raw | Reference}
+      columns: { [key: string]: string | number | Raw | Reference }
     ): QueryBuilder<T>;
     (tableName: TableName, raw: Raw): QueryBuilder<T>;
     (tableName: TableName, column1: ColumnRef, column2: ColumnRef): QueryBuilder<T>;
@@ -1199,17 +1290,17 @@ declare namespace Objection {
      * Holds simple JSON Schema definitions for
      * referencing from elsewhere.
      */
-    definitions?: {[key: string]: JsonSchema};
+    definitions?: { [key: string]: JsonSchema };
     /**
      * The keys that can exist on the object with the
      * json schema that should validate their value
      */
-    properties?: {[property: string]: JsonSchema};
+    properties?: { [property: string]: JsonSchema };
     /**
      * The key of this object is a regex for which
      * properties the schema applies to
      */
-    patternProperties?: {[pattern: string]: JsonSchema};
+    patternProperties?: { [pattern: string]: JsonSchema };
     /**
      * If the key is present as a property then the
      * string of properties must also be present.
@@ -1217,7 +1308,7 @@ declare namespace Objection {
      * also be valid for the object if the key is
      * present.
      */
-    dependencies?: {[key: string]: JsonSchema | string[]};
+    dependencies?: { [key: string]: JsonSchema | string[] };
 
     /////////////////////////////////////////////////
     // Generic

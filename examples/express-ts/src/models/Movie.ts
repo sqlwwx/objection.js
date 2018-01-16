@@ -5,7 +5,9 @@ import { join } from 'path';
 export default class Movie extends Model {
   readonly id: number;
   name: string;
-  actors: Person[];
+
+  // Optional eager relations.
+  actors?: Person[];
 
   // Table name is the only required property.
   static tableName = 'Movie';
@@ -23,13 +25,14 @@ export default class Movie extends Model {
     }
   };
 
-  static relationMappings = {
+  // This relationMappings is a thunk, which prevents require loops:
+  static relationMappings = () => ({
     actors: {
       relation: Model.ManyToManyRelation,
       // The related model. This can be either a Model subclass constructor or an
       // absolute file path to a module that exports one. We use the file path version
       // here to prevent require loops.
-      modelClass: Person,
+      modelClass: join(__dirname, 'Person'),
       join: {
         from: 'Movie.id',
         // ManyToMany relation needs the `through` object to describe the join table.
@@ -40,5 +43,5 @@ export default class Movie extends Model {
         to: 'Person.id'
       }
     }
-  };
+  });
 }
