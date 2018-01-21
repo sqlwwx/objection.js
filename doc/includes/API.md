@@ -2257,48 +2257,6 @@ Type|Description
 
 
 
-#### whereRef
-
-```js
-const builder = queryBuilder.whereRef(leftRef, operator, rightRef);
-```
-
-```js
-builder.whereRef('Person.id', '=', 'Animal.ownerId');
-```
-
-Compares a column reference to another
-
-##### Return value
-
-Type|Description
-----|-----------------------------
-[`QueryBuilder`](#querybuilder)|`this` query builder for chaining.
-
-
-
-
-#### orWhereRef
-
-```js
-const builder = queryBuilder.orWhereRef(leftRef, operator, rightRef);
-```
-
-```js
-builder.orWhereRef('Person.id', '=', 'Animal.ownerId');
-```
-
-Compares a column reference to another
-
-##### Return value
-
-Type|Description
-----|-----------------------------
-[`QueryBuilder`](#querybuilder)|`this` query builder for chaining.
-
-
-
-
 #### whereComposite
 
 ```js
@@ -2355,68 +2313,6 @@ builder.whereInComposite(['a', 'b'], SomeModel.query().select('a', 'b'));
 Type|Description
 ----|-----------------------------
 [`QueryBuilder`](#querybuilder)|`this` query builder for chaining.
-
-
-
-
-#### whereJsonEquals
-
-```js
-const builder = queryBuilder.whereJsonEquals(fieldExpression, jsonObjectOrFieldExpression);
-```
-
-```js
-const people = await Person
-  .query()
-  .whereJsonEquals('additionalData:myDogs', 'additionalData:dogsAtHome');
-
-// oh joy! these people have all their dogs at home!
-
-const people = await Person
-  .query()
-  .whereJsonEquals('additionalData:myDogs[0]', { name: "peter"});
-
-// these people's first dog name is "peter" and the dog has no other
-// attributes, but its name
-```
-
-Where jsonb field reference equals jsonb object or other field reference.
-
-Also supports having field expression in both sides of equality.
-
-##### Arguments
-
-Argument|Type|Description
---------|----|--------------------
-fieldExpression|[`FieldExpression`](#fieldexpression)|Reference to column / json field
-jsonObjectOrFieldExpression|Object&#124;Array&#124;[`FieldExpression`](#fieldexpression)|Reference to column / json field or json object
-
-##### Return value
-
-Type|Description
-----|-----------------------------
-[`QueryBuilder`](#querybuilder)|`this` query builder for chaining.
-
-
-
-
-#### orWhereJsonEquals
-
-See [`whereJsonEquals`](#wherejsonequals)
-
-
-
-
-#### whereJsonNotEquals
-
-See [`whereJsonEquals`](#wherejsonequals)
-
-
-
-
-#### orWhereJsonNotEquals
-
-See [`whereJsonEquals`](#wherejsonequals)
 
 
 
@@ -2713,49 +2609,6 @@ See [`whereJsonHasAll`](#wherejsonhasall)
 
 
 
-#### whereJsonField
-
-```js
-const builder = queryBuilder.whereJsonField(fieldExpression, operator, value);
-```
-
-Where referred json field value casted to same type with value fulfill given operand.
-
-Value may be number, string, null, boolean and referred json field is converted
-to TEXT, NUMERIC or BOOLEAN sql type for comparison.
-
-If left hand field does not exist rows appear IS null so if one needs to get only
-rows, which has key and it's value is null one may use e.g.
-[`.whereJsonSupersetOf("column", { field: null })`](#wherejsonsupersetof) or check is key exist and
-then [`.whereJsonField('column:field', 'IS', null)`](#wherejsonfield)
-
-For testing against objects or arrays one should see tested with [`whereJsonEqual`](#wherejsonequal),
-[`whereJsonSupersetOf`](#wherejsonsupersetof) and [`whereJsonSubsetOf`](#wherejsonsubsetof) methods.
-
-##### Arguments
-
-Argument|Type|Description
---------|----|--------------------
-fieldExpression|[`FieldExpression`](#fieldexpression)|Expression pointing to certain value
-operator|string|SQL comparator usually `<`, `>`, `<>`, `=` or `!=`
-value|boolean&#124;number&#124;string&#124;null|Value to which field is compared to
-
-##### Return value
-
-Type|Description
-----|-----------------------------
-[`QueryBuilder`](#querybuilder)|`this` query builder for chaining.
-
-
-
-
-#### orWhereJsonField
-
-See [`whereJsonField`](#wherejsonfield)
-
-
-
-
 
 ### Other instance methods
 
@@ -2989,10 +2842,10 @@ boolean|false if the query will never be executed.
 
 
 
-#### isFindQuery
+#### isFind
 
 ```js
-const isFindQuery = queryBuilder.isFindQuery();
+const isFind = queryBuilder.isFind();
 ```
 
 Returns true if the query is read-only.
@@ -3002,6 +2855,143 @@ Returns true if the query is read-only.
 Type|Description
 ----|-----------------------------
 boolean|true if the query is read-only.
+
+
+
+
+#### isInsert
+
+```js
+const isInsert = queryBuilder.isInsert();
+```
+
+Returns true if the query performs an insert operation.
+
+##### Return value
+
+Type|Description
+----|-----------------------------
+boolean|true if the query performs an insert operation.
+
+
+
+
+#### isUpdate
+
+```js
+const isUpdate = queryBuilder.isUpdate();
+```
+
+Returns true if the query performs an update operation.
+
+##### Return value
+
+Type|Description
+----|-----------------------------
+boolean|true if the query performs an update operation.
+
+
+
+
+#### isDelete
+
+```js
+const isDelete = queryBuilder.isDelete();
+```
+
+Returns true if the query performs a delete operation.
+
+##### Return value
+
+Type|Description
+----|-----------------------------
+boolean|true if the query performs a delete operation.
+
+
+
+
+#### isRelate
+
+```js
+const isRelate = queryBuilder.isRelate();
+```
+
+Returns true if the query performs a relate operation.
+
+##### Return value
+
+Type|Description
+----|-----------------------------
+boolean|true if the query performs a relate operation.
+
+
+
+
+#### isUnrelate
+
+```js
+const isUnrelate = queryBuilder.isUnrelate();
+```
+
+Returns true if the query performs an unrelate operation.
+
+##### Return value
+
+Type|Description
+----|-----------------------------
+boolean|true if the query performs an unrelate operation.
+
+
+
+
+#### hasWheres
+
+```js
+const hasWheres = queryBuilder.hasWheres();
+```
+
+Returns true if the query contains where statements.
+
+##### Return value
+
+Type|Description
+----|-----------------------------
+boolean|true if the query contains where statements.
+
+
+
+
+#### hasSelects
+
+```js
+const hasSelects = queryBuilder.hasSelects();
+```
+
+Returns true if the query contains any specific select staments, such as:
+`'select'`, `'columns'`, `'column'`, `'distinct'`, `'count'`, `'countDistinct'`, `'min'`, `'max'`, `'sum'`, `'sumDistinct'`, `'avg'`, `'avgDistinct'`
+
+##### Return value
+
+Type|Description
+----|-----------------------------
+boolean|true if the query contains any specific select staments.
+
+
+
+
+#### hasEager
+
+```js
+const hasEager = queryBuilder.hasEager();
+```
+
+Returns true if the query defines any eager expressions.
+
+##### Return value
+
+Type|Description
+----|-----------------------------
+boolean|true if the query defines any eager expressions.
 
 
 
@@ -6822,7 +6812,7 @@ const builder = model.$relatedQuery(relationName, transactionOrKnex);
 ```
 
 > Fetch all models related to a model through a relation. The fetched models are
-> also stored to the owner model's property named after the relation:
+> also stored to the owner model's property named after the relation (by default):
 
 ```js
 const pets = await jennifer.$relatedQuery('pets');
@@ -6848,7 +6838,7 @@ console.log(dogsAndCats);
 ```
 
 > This inserts a new model to the database and binds it to the owner model as defined
-> by the relation:
+> by the relation (by default):
 
 ```js
 const waldo = await jennifer
@@ -6925,7 +6915,7 @@ await jennifer
 console.log('jennifer just got all her dogs vaccinated');
 ```
 
-Use this to build a query that only affects the models related to this instance through a relation.
+Use this to build a query that only affects the models related to this instance through a relation. By default, any fetched or inserted models are also stored to the owner model’s property named after the relation. See [relatedFindQueryMutates](#relatedfindquerymutates) or [relatedInsertQueryMutates](#relatedinsertquerymutates) to change this behaviour.
 
 ##### Arguments
 

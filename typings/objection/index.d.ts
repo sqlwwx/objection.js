@@ -1,4 +1,4 @@
-// Type definitions for objection v0.9.0
+// Type definitions for objection
 // Project: Objection.js <http://vincit.github.io/objection.js/>
 // Definitions by: Matthew McEachen <https://github.com/mceachen> & Drew R. <https://github.com/drew-r>
 
@@ -343,7 +343,6 @@ declare namespace Objection {
     // This can only be used as a subquery so the result model type is irrelevant.
     relatedQuery(relationName: string): QueryBuilder<any>;
     knex(knex?: knex): knex;
-    formatter(): any; // < the knex typings punts here too
     knexQuery(): knex.QueryBuilder;
 
     bindKnex(knex: knex): this;
@@ -410,7 +409,6 @@ declare namespace Objection {
     // This can only be used as a subquery so the result model type is irrelevant.
     static relatedQuery(relationName: string): QueryBuilder<any>;
     static knex(knex?: knex): knex;
-    static formatter(): any; // < the knex typings punts here too
     static knexQuery(): knex.QueryBuilder;
     static bindKnex<T>(this: T, knex: knex): T;
     static bindTransaction<T>(this: T, transaction: Transaction): T;
@@ -697,18 +695,11 @@ declare namespace Objection {
     // The Objection documentation incorrectly states this returns a QueryBuilder.
     columnInfo(column?: string): Promise<knex.ColumnInfo>;
 
-    whereRef(leftRef: string, operator: string, rightRef: string): this;
-    orWhereRef(leftRef: string, operator: string, rightRef: string): this;
     whereComposite(column: ColumnRef, value: Value | QueryBuilder<any>): this;
     whereComposite(column: ColumnRef[], value: Value[] | QueryBuilder<any>): this;
     whereComposite(column: ColumnRef, operator: string, value: Value | QueryBuilder<any>): this;
     whereComposite(column: ColumnRef[], operator: string, value: Value[] | QueryBuilder<any>): this;
     whereInComposite(column: ColumnRef, values: Value[] | QueryBuilder<any>): this;
-
-    whereJsonEquals: WhereJson<T>;
-    whereJsonNotEquals: WhereJson<T>;
-    orWhereJsonEquals: WhereJson<T>;
-    orWhereJsonNotEquals: WhereJson<T>;
 
     whereJsonSupersetOf: WhereJson<T>;
     orWhereJsonSupersetOf: WhereJson<T>;
@@ -740,9 +731,6 @@ declare namespace Objection {
     whereJsonHasAll: WhereJsonExpression<T>;
     orWhereJsonHasAll: WhereJsonExpression<T>;
 
-    whereJsonField: WhereJsonField<T>;
-    orWhereJsonField: WhereJsonField<T>;
-
     // Non-query methods:
 
     context(queryContext: object): this;
@@ -753,7 +741,15 @@ declare namespace Objection {
     resolve(value: any): this;
 
     isExecutable(): boolean;
-    isFindQuery(): boolean;
+    isFind(): boolean;
+    isInsert(): boolean;
+    isUpdate(): boolean;
+    isDelete(): boolean;
+    isRelate(): boolean;
+    isUnrelate(): boolean;
+    hasWheres(): boolean;
+    hasSelects(): boolean;
+    hasEager(): boolean;
 
     runBefore(fn: (result: any, builder: this) => any): this;
     onBuild(fn: (builder: this) => void): this;
@@ -1157,7 +1153,7 @@ declare namespace Objection {
   interface GroupBy<T> extends RawMethod<T>, ColumnNamesMethod<T> {}
 
   interface OrderBy<T> {
-    (column: ColumnRef, direction?: string): QueryBuilder<T>;
+    (column: ColumnRef, direction?: 'ASC' | 'DESC' | 'asc' | 'desc'): QueryBuilder<T>;
   }
 
   interface Union<T> {

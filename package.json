@@ -1,6 +1,6 @@
 {
   "name": "objection",
-  "version": "1.0.0-rc.2",
+  "version": "1.0.0-rc.4",
   "description": "An SQL-friendly ORM for Node.js",
   "main": "lib/objection.js",
   "license": "MIT",
@@ -9,6 +9,7 @@
     "test-travis": "npm run eslint && istanbul --config=.istanbul.yml cover _mocha -- --slow 100 --timeout 60000 --reporter spec --recursive tests && npm run test-typings",
     "test-fast": "mocha --slow 10 --timeout 15000 --reporter spec --recursive tests --bail",
     "test-opt": "mocha --slow 10 --timeout 15000 --reporter spec --recursive tests --bail --trace_opt --trace_deopt",
+    "test-prof": "mocha --slow 10 --timeout 15000 --reporter spec --recursive tests --prof",
     "test-typings": "tsc",
     "coveralls": "cat ./testCoverage/lcov.info | ./node_modules/coveralls/bin/coveralls.js",
     "perf": "mocha --slow 60000 --timeout 60000 --reporter spec --recursive perf",
@@ -26,7 +27,8 @@
   },
   "contributors": [
     "Mikael Lepistö <mikael.lepisto@vincit.com> (https://github.com/elhigu)",
-    "Matthew McEachen <matthew-objection@photostructure.com> (https://github.com/mceachen)"
+    "Matthew McEachen <matthew-objection@photostructure.com> (https://github.com/mceachen)",
+    "Jürg Lehni <juerg@scratchdisk.com> (https://github.com/lehni)"
   ],
   "repository": {
     "type": "git",
