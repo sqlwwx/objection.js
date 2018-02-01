@@ -1191,12 +1191,12 @@ describe('QueryBuilder', () => {
       .filterEager('a', _.noop);
 
     expect(builder._eagerExpression).to.be.a(RelationExpression);
-    expect(builder._eagerFilterExpressions).to.have.length(1);
+    expect(builder._eagerFiltersAtPath).to.have.length(1);
 
     builder.clearEager();
 
     expect(builder._eagerExpression).to.equal(null);
-    expect(builder._eagerFilterExpressions).to.have.length(0);
+    expect(builder._eagerFiltersAtPath).to.have.length(0);
   });
 
   it('clearReject() should clear remove explicit rejection', () => {
@@ -1993,6 +1993,153 @@ describe('QueryBuilder', () => {
         .then(() => {
           expect(foo).to.equal(100);
         });
+    });
+
+    describe('executeOnBuild', () => {
+      it('should move added operations right after the adding operation (push)', () => {
+        const builder = QueryBuilder.forClass(TestModel);
+        const calls = [];
+
+        builder._operations = [
+          op(builder => {
+            calls.push(0);
+          }),
+
+          op(builder => {
+            calls.push(1);
+
+            // This should be called next even though we add it to the end.
+            builder._operations.push(
+              op(() => {
+                calls.push(2);
+              })
+            );
+          }),
+
+          op(builder => {
+            calls.push(3);
+          })
+        ];
+
+        builder.executeOnBuild();
+        expect(calls).to.eql([0, 1, 2, 3]);
+      });
+
+      it('should move added operations right after the adding operation (concat)', () => {
+        const builder = QueryBuilder.forClass(TestModel);
+        const calls = [];
+
+        builder._operations = [
+          op(builder => {
+            calls.push(0);
+          }),
+
+          op(builder => {
+            calls.push(1);
+
+            // This should be called next even though we add it to the end.
+            builder._operations = builder._operations.concat(
+              op(() => {
+                calls.push(2);
+              })
+            );
+          }),
+
+          op(builder => {
+            calls.push(3);
+          })
+        ];
+
+        builder.executeOnBuild();
+        expect(calls).to.eql([0, 1, 2, 3]);
+      });
+
+      it('should work if an operation removes a bunch of other operations', () => {
+        const builder = QueryBuilder.forClass(TestModel);
+        const calls = [];
+
+        builder._operations = [
+          op(builder => {
+            calls.push(0);
+          }),
+
+          op(builder => {
+            calls.push(1);
+          }),
+
+          op(builder => {
+            calls.push(2);
+          }),
+
+          op(builder => {
+            calls.push(3);
+
+            builder._operations = [builder._operations[3], builder._operations[5]];
+          }),
+
+          op(builder => {
+            calls.push(4);
+          }),
+
+          op(builder => {
+            calls.push(5);
+          })
+        ];
+
+        builder.executeOnBuild();
+        expect(calls).to.eql([0, 1, 2, 3, 5]);
+      });
+
+      it('should work if an operation removes and adds a bunch of other operations', () => {
+        const builder = QueryBuilder.forClass(TestModel);
+        const calls = [];
+
+        builder._operations = [
+          op(builder => {
+            calls.push(0);
+          }),
+
+          op(builder => {
+            calls.push(1);
+          }),
+
+          op(builder => {
+            calls.push(2);
+          }),
+
+          op(builder => {
+            calls.push(3);
+
+            builder._operations = [
+              builder._operations[3],
+              builder._operations[5],
+
+              op(builder => {
+                calls.push(4);
+              }),
+
+              op(builder => {
+                calls.push(5);
+              })
+            ];
+          }),
+
+          op(builder => {
+            calls.push(6);
+          }),
+
+          op(builder => {
+            calls.push(7);
+          })
+        ];
+
+        builder.executeOnBuild();
+        expect(calls).to.eql([0, 1, 2, 3, 4, 5, 7]);
+      });
+
+      function op(onBuild) {
+        return { onBuild };
+      }
     });
   });
 });

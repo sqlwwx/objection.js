@@ -98,11 +98,9 @@ class Person extends Model {
   $beforeInsert() {
     if (this.id) {
       throw new objection.ValidationError({
-        id: [{
-          message: 'identifier should not be defined before insert'
-          keyword: null,
-          params: null
-        }]
+        message: 'identifier should not be defined before insert',
+        type: 'MyCustomError',
+        data: someObjectWithSomeData
       });
     }
   }
@@ -349,7 +347,6 @@ const jennifer = await Person
   .query()
   .patch({firstName: 'Jenn', lastName: 'Lawrence'})
   .where('id', 1234)
-  .first() // Ensures we're returned a single row in the promise resolution
   .returning('*');
 
 console.log(jennifer.updatedAt); // NOW()-ish
@@ -362,7 +359,6 @@ console.log(jennifer.firstName); // "Jenn"
 const updateJennifer = await jennifer
   .$query()
   .patch({firstName: 'J.', lastName: 'Lawrence'})
-  .first() // Ensures we're returned a single row in the promise resolution
   .returning('*');
 
 console.log(updateJennifer.updatedAt); // NOW()-ish
@@ -375,7 +371,7 @@ console.log(updateJennifer.firstName); // "J."
 const deletedJennifers = await Person
   .query()
   .delete()
-  .where({firstName: 'Jenn'})
+  .where({firstName: 'Jennifer'})
   .returning('*');
 
 console.log(deletedJennifers.length); // However many Jennifers there were
@@ -702,7 +698,7 @@ const {
 } = require('objection');
 
 const {
-  DbError,
+  DBError,
   ConstraintViolationError,
   UniqueViolationError,
   NotNullViolationError,
@@ -800,7 +796,7 @@ function errorHandler(err, res) {
       type: 'InvalidData',
       data: {}
     });
-  } else if (err instanceof DbError) {
+  } else if (err instanceof DBError) {
     res.status(500).send({
       message: err.message,
       type: 'UnknownDatabaseError',
