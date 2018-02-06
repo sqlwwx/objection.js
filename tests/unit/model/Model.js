@@ -769,6 +769,87 @@ describe('Model', () => {
     });
   });
 
+  describe('ensureModel', () => {
+    let Model1;
+    let Model2;
+
+    beforeEach(() => {
+      Model1 = modelClass('Model1');
+      Model2 = modelClass('Model2');
+
+      Model1.relationMappings = {
+        relation1: {
+          relation: Model.HasManyRelation,
+          modelClass: Model2,
+          join: {
+            from: 'Model1.id',
+            to: 'Model2.model1Id'
+          }
+        },
+
+        relation2: {
+          relation: Model.BelongsToOneRelation,
+          modelClass: Model1,
+          join: {
+            from: 'Model1.id',
+            to: 'Model1.model1Id'
+          }
+        }
+      };
+    });
+
+    it('should parse nested relations into model instances even if the root is a model', () => {
+      let model1 = Model1.fromJson({
+        id: 10,
+        model1Id: 13
+      });
+
+      model1.relation1 = [{ value: 1 }, { value: 2 }];
+      model1.relation2 = { value: 3, relation1: [{ value: 4 }] };
+
+      let model2 = Model1.ensureModel(model1);
+
+      expect(model2 === model1).to.equal(true);
+      expect(model2.relation1[0]).to.be.a(Model2);
+      expect(model2.relation1[1]).to.be.a(Model2);
+      expect(model2.relation2).to.be.a(Model1);
+      expect(model2.relation2.relation1[0]).to.be.a(Model2);
+    });
+
+    it('should not mutate if the whole tree already is models', () => {
+      let model1 = Model1.fromJson({
+        id: 10,
+        model1Id: 13,
+        relation1: [{ value: 1 }, { value: 2 }],
+        relation2: { value: 3, relation1: [{ value: 4 }] }
+      });
+
+      let model2 = Model1.ensureModel(model1);
+
+      expect(model2 === model1).to.equal(true);
+      expect(model2.relation1 === model2.relation1).to.equal(true);
+      expect(model2.relation1[0] === model2.relation1[0]).to.equal(true);
+      expect(model2.relation1[1] === model2.relation1[1]).to.equal(true);
+      expect(model2.relation2 === model2.relation2).to.equal(true);
+      expect(model2.relation2.relation1[0] === model2.relation2.relation1[0]).to.equal(true);
+    });
+
+    it('should work with circular references', () => {
+      let obj1 = { value: 1 };
+      let obj2 = { value: 2 };
+
+      obj1.relation2 = obj2;
+      obj2.relation2 = obj1;
+
+      const model = Model1.ensureModel(obj1);
+      expect(model).to.be.a(Model1);
+      expect(model.relation2).to.be.a(Model1);
+      expect(model.relation2.relation2 === model).to.equal(true);
+      expect(model.value).to.equal(1);
+      expect(model.relation2.value).to.equal(2);
+    });
+  });
+
   describe('fromDatabaseJson', () => {
     let Model1;
 
