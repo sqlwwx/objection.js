@@ -133,6 +133,94 @@ const knex = Knex(Object.assign({
 
 Documented [here](#snake-case-to-camel-case-conversion).
 
+<h4 id="objection-knexidentifiermapping">knexIdentifierMapping</h4>
+
+```js
+const { knexIdentifierMapping } = require('objection');
+const Knex = require('knex');
+
+const knex = Knex({
+  client: 'postgres',
+
+  connection: {
+    host: '127.0.0.1',
+    user: 'objection',
+    database: 'objection_test'
+  }
+
+  // Merge `postProcessResponse` and `wrapIdentifier` mappers.
+  ...knexIdentifierMapping({
+    MyId: 'id',
+    MyProp: 'prop',
+    MyAnotherProp: 'anotherProp'
+  })
+});
+```
+
+> Note that you can pretty easily define the conversions in some static property
+> of your model. In this example we have added a property `column` to jsonSchema
+> and use that to create the mapping object.
+
+```js
+const { knexIdentifierMapping } = require('objection');
+const Knex = require('knex');
+const path = require('path')
+const fs = require('fs');
+
+// Path to your model folder.
+const MODELS_PATH = path.join(__dirname, 'models');
+
+const knex = Knex({
+  client: 'postgres',
+
+  connection: {
+    host: '127.0.0.1',
+    user: 'objection',
+    database: 'objection_test'
+  }
+
+  // Go through all models and add conversions using the custom property
+  // `column` in json schema.
+  ...knexIdentifierMapping(fs.readdirSync(MODELS_PATH)
+    .filter(it => it.endsWith('.js'))
+    .map(it => require(path.join(MODELS_PATH, it)))
+    .reduce((mapping, modelClass) => {
+      const properties = modelClass.jsonSchema.properties;
+      return Object.keys(properties).reduce((mapping, propName) => {
+        mapping[properties[propName].column] = propName;
+        return mapping;
+      }, mapping);
+    }, {});
+  )
+});
+```
+
+> For older nodes:
+
+```js
+const Knex = require('knex');
+const knexSnakeCaseMappers = require('objection').knexSnakeCaseMappers;
+
+const knex = Knex(Object.assign({
+  client: 'postgres',
+
+  connection: {
+    host: '127.0.0.1',
+    user: 'objection',
+    database: 'objection_test'
+  }
+}, knexIdentifierMapping({
+  MyId: 'id',
+  MyProp: 'prop',
+  MyAnotherProp: 'anotherProp'
+})));
+```
+
+Like [knexSnakeCaseMappers](#objection-knexsnakecasemappers), but can be used to make an arbitrary
+static mapping between column names and property names. In the examples, you would have identifiers
+`MyId`, `MyProp` and `MyAnotherProp` in the database and you would like to map them into `id`, `prop`
+and `anotherProp` in the code.
+
 <h4 id="objection-snakecasemappers">snakeCaseMappers</h4>
 
 ```js
@@ -156,6 +244,7 @@ class Person extends Model {
 ```
 
 Documented [here](#snake-case-to-camel-case-conversion).
+
 
 
 
@@ -1488,8 +1577,8 @@ await Person
 await Person
   .query()
   .joinRelation('[pets, parent]')
-  .where('pets.species', 'dog');
-  .where('parent.name', 'Arnold')
+  .where('pets.species', 'dog')
+  .where('parent.name', 'Arnold');
 ```
 
 > Join two multiple and nested relations. Note that when referring to nested relations
@@ -2647,8 +2736,8 @@ const context = builder.context();
 Person
   .query()
   .context({
-    runBefore: (builder) => {},
-    runAfter: (builder) => {},
+    runBefore: (result, builder) => {},
+    runAfter: (result, builder) => {},
     onBuild: (builder) => {}
   });
 ```
@@ -3023,6 +3112,33 @@ selector|string&#124;regexp|A name or regular expression to match all defined op
 Type|Description
 ----|-----------------------------
 boolean|true if the query defines an operation that matches the given selector.
+
+
+
+
+#### clear
+
+```js
+queryBuilder.clear(selector);
+```
+
+```js
+console.log(Person.query().orderBy('firstName').clear('orderBy').has('orderBy'));
+```
+
+Removes all operations in the query that match the given selector.
+
+##### Arguments
+
+Argument|Type|Description
+--------|----|--------------------
+selector|string&#124;regexp|A name or regular expression to match all operations that are to be removed against.
+
+##### Return value
+
+Type|Description
+----|-----------------------------
+[`QueryBuilder`](#querybuilder)|`this` query builder for chaining.
 
 
 
@@ -7106,8 +7222,9 @@ Shortcut for [`return this.constructor.knex()`](#knex).
 
 ```js
 class Person extends Model {
-  $beforeInsert(queryContext) {
-    return doPossiblyAsyncStuff();
+  async $beforeInsert(queryContext) {
+    await super.$beforeInsert(queryContext);
+    await doPossiblyAsyncStuff();
   }
 }
 ```
@@ -7116,12 +7233,13 @@ class Person extends Model {
 
 ```js
 class Person extends Model {
-  $beforeInsert(queryContext) {
+  async $beforeInsert(queryContext) {
+    await super.$beforeInsert(queryContext);
     // This can always be done even if there is no running transaction. In that
     // case `queryContext.transaction` returns the normal knex instance. This
     // makes sure that the query is not executed outside the original query's
     // transaction.
-    return SomeModel
+    await SomeModel
       .query(queryContext.transaction)
       .insert(whatever);
   }
@@ -7153,8 +7271,9 @@ Type|Description
 
 ```js
 class Person extends Model {
-  $afterInsert(queryContext) {
-    return doPossiblyAsyncStuff();
+  async $afterInsert(queryContext) {
+    await super.$afterInsert(queryContext);
+    await doPossiblyAsyncStuff();
   }
 }
 ```
@@ -7164,11 +7283,12 @@ class Person extends Model {
 ```js
 class Person extends Model {
   async $afterInsert(queryContext) {
+    await super.$afterInsert(queryContext);
     // This can always be done even if there is no running transaction. In that
     // case `queryContext.transaction` returns the normal knex instance. This
     // makes sure that the query is not executed outside the original query's
     // transaction.
-    return SomeModel
+    await SomeModel
       .query(queryContext.transaction)
       .insert(whatever);
   }
@@ -7199,7 +7319,8 @@ Type|Description
 ```js
 class Person extends Model {
   async $beforeUpdate(opt, queryContext) {
-    return doPossiblyAsyncStuff();
+    await super.$beforeUpdate(opt, queryContext);
+    await doPossiblyAsyncStuff();
   }
 }
 ```
@@ -7209,11 +7330,12 @@ class Person extends Model {
 ```js
 class Person extends Model {
   async $beforeUpdate(opt, queryContext) {
+    await super.$beforeUpdate(opt, queryContext);
     // This can always be done even if there is no running transaction. In that
     // case `queryContext.transaction` returns the normal knex instance. This
     // makes sure that the query is not executed outside the original query's
     // transaction.
-    return SomeModel
+    await SomeModel
       .query(queryContext.transaction)
       .insert(whatever);
   }
@@ -7274,7 +7396,8 @@ Type|Description
 ```js
 class Person extends Model {
   async $afterUpdate(opt, queryContext) {
-    return doPossiblyAsyncStuff();
+    await super.$afterUpdate(opt, queryContext);
+    await doPossiblyAsyncStuff();
   }
 }
 ```
@@ -7284,11 +7407,12 @@ class Person extends Model {
 ```js
 class Person extends Model {
   async $afterUpdate(opt, queryContext) {
+    await super.$afterUpdate(opt, queryContext);
     // This can always be done even if there is no running transaction. In that
     // case `queryContext.transaction` returns the normal knex instance. This
     // makes sure that the query is not executed outside the original query's
     // transaction.
-    return SomeModel
+    await SomeModel
       .query(queryContext.transaction)
       .insert(whatever);
   }
@@ -7346,7 +7470,8 @@ Type|Description
 ```js
 class Person extends Model {
   async $beforeDelete(queryContext) {
-    return doPossiblyAsyncStuff();
+    await super.$beforeDelete(queryContext);
+    await doPossiblyAsyncStuff();
   }
 }
 ```
@@ -7356,11 +7481,12 @@ class Person extends Model {
 ```js
 class Person extends Model {
   async $beforeDelete(queryContext) {
+    await super.$beforeDelete(queryContext);
     // This can always be done even if there is no running transaction. In that
     // case `queryContext.transaction` returns the normal knex instance. This
     // makes sure that the query is not executed outside the original query's
     // transaction.
-    return SomeModel
+    await SomeModel
       .query(queryContext.transaction)
       .insert(whatever);
   }
@@ -7393,7 +7519,8 @@ Type|Description
 ```js
 class Person extends Model {
   async $afterDelete(queryContext) {
-    return doPossiblyAsyncStuff();
+    await super.$afterDelete(queryContext);
+    await doPossiblyAsyncStuff();
   }
 }
 ```
@@ -7403,11 +7530,12 @@ class Person extends Model {
 ```js
 class Person extends Model {
   async $afterDelete(queryContext) {
+    await super.$afterDelete(queryContext);
     // This can always be done even if there is no running transaction. In that
     // case `queryContext.transaction` returns the normal knex instance. This
     // makes sure that the query is not executed outside the original query's
     // transaction.
-    return SomeModel
+    await SomeModel
       .query(queryContext.transaction)
       .insert(whatever);
   }
@@ -7439,7 +7567,7 @@ Type|Description
 
 ```js
 class Person extends Model {
-  async $afterGet(queryContext) {
+  $afterGet(queryContext) {
     return doPossiblyAsyncStuff();
   }
 }
@@ -7449,7 +7577,7 @@ class Person extends Model {
 
 ```js
 class Person extends Model {
-  async $afterGet(queryContext) {
+  $afterGet(queryContext) {
     // This can always be done even if there is no running transaction. In that
     // case `queryContext.transaction` returns the normal knex instance. This
     // makes sure that the query is not executed outside the original query's
