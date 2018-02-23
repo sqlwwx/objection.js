@@ -538,8 +538,6 @@ module.exports = session => {
               .clearSelect()
               .clearWhere()
               .columns('model2.model2_prop2')
-              .forUpdate()
-              .forShare()
               .where(raw('? = ?', ref('model2.id_col'), ref('model2.model2_prop2')))
               .where(raw('? in (?)', ref('model2.id_col'), Model1.query().select('id')))
               .whereNot('model2.id_col', 1)
