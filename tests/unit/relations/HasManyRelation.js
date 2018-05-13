@@ -152,7 +152,7 @@ describe('HasManyRelation', () => {
         expect(executedQueries[0]).to.equal(builder.toString());
         expect(executedQueries[0]).to.equal(builder.toSql());
         expect(executedQueries[0]).to.equal(
-          'select "RelatedModel".* from "RelatedModel" where ("RelatedModel"."ownerAId", "RelatedModel"."ownerBId") in ((11, 22),(11, 33)) and "name" = \'Teppo\' or "age" > 60'
+          'select "RelatedModel".* from "RelatedModel" where ("RelatedModel"."ownerAId", "RelatedModel"."ownerBId") in ((11, 22), (11, 33)) and "name" = \'Teppo\' or "age" > 60'
         );
       });
     });
@@ -914,6 +914,26 @@ describe('HasManyRelation', () => {
             'update "RelatedModel" set "ownerId" = NULL where "code" in (55, 66, 77) and "RelatedModel"."ownerId" = 666 and "someColumn" = 100'
           );
         });
+    });
+
+    it('should throw is a `through` object is given', () => {
+      expect(() => {
+        relation = new HasManyRelation('nameOfOurRelation', OwnerModel);
+
+        relation.setMapping({
+          modelClass: RelatedModel,
+          relation: HasManyRelation,
+          join: {
+            from: 'OwnerModel.oid',
+            through: {},
+            to: 'RelatedModel.ownerId'
+          }
+        });
+      }).to.throwException(err => {
+        expect(err.message).to.equal(
+          'OwnerModel.relationMappings.nameOfOurRelation: Property join.through is not supported for this relation type.'
+        );
+      });
     });
   });
 

@@ -361,6 +361,54 @@ describe('Model', () => {
       }).to.not.throwException(err => console.log(err));
     });
 
+    it('should skip requirement validation if options.patch == true (if/then)', () => {
+      Model1.jsonSchema = {
+        properties: {
+          a: { type: 'string' },
+          b: { type: 'number' },
+          c: { type: 'string' }
+        },
+
+        if: {
+          properties: {
+            a: {
+              enum: ['foo']
+            }
+          }
+        },
+        then: {
+          required: ['b']
+        },
+        else: {
+          required: ['c']
+        }
+      };
+
+      expect(() => {
+        Model1.fromJson({ a: 'foo' });
+      }).to.throwException();
+
+      expect(() => {
+        Model1.fromJson({ a: 'bar' });
+      }).to.throwException();
+
+      expect(() => {
+        Model1.fromJson({ a: 'foo', b: 1 });
+      }).to.not.throwException();
+
+      expect(() => {
+        Model1.fromJson({ a: 'bar', c: 'baz' });
+      }).to.not.throwException();
+
+      expect(() => {
+        Model1.fromJson({ a: 'foo' }, { patch: true });
+      }).to.not.throwException();
+
+      expect(() => {
+        Model1.fromJson({ a: 'bar' }, { patch: true });
+      }).to.not.throwException();
+    });
+
     it('should skip validation if options.skipValidation == true', () => {
       Model1.jsonSchema = {
         required: ['a'],
@@ -1220,10 +1268,95 @@ describe('Model', () => {
         }
       }
 
-      expect(Model1.fromJson({ a: 100, b: 10 }).toJSON()).to.eql({
+      expect(
+        Model1.fromJson({
+          a: 100,
+          b: 10,
+          rel1: Model1.fromJson({ a: 101, b: 11 }),
+          rel2: [Model1.fromJson({ a: 102, b: 12 }), Model1.fromJson({ a: 103, b: 13 })]
+        }).toJSON()
+      ).to.eql({
         a: 100,
         b: 10,
-        foo: 110
+        foo: 110,
+
+        rel1: {
+          a: 101,
+          b: 11,
+          foo: 112
+        },
+
+        rel2: [{ a: 102, b: 12, foo: 114 }, { a: 103, b: 13, foo: 116 }]
+      });
+    });
+
+    it('should ignore virtuals when virtuals: false option is passed to toJSON', () => {
+      class Model1 extends Model {
+        get foo() {
+          return this.a + this.b;
+        }
+
+        get bar() {
+          return this.a + this.b;
+        }
+
+        static get virtualAttributes() {
+          return ['foo'];
+        }
+      }
+
+      expect(
+        Model1.fromJson({
+          a: 100,
+          b: 10,
+          rel1: Model1.fromJson({ a: 101, b: 11 }),
+          rel2: [Model1.fromJson({ a: 102, b: 12 }), Model1.fromJson({ a: 103, b: 13 })]
+        }).toJSON({ virtuals: false })
+      ).to.eql({
+        a: 100,
+        b: 10,
+
+        rel1: {
+          a: 101,
+          b: 11
+        },
+
+        rel2: [{ a: 102, b: 12 }, { a: 103, b: 13 }]
+      });
+    });
+
+    it('should ignore virtuals when virtuals: false option is passed to $toJson', () => {
+      class Model1 extends Model {
+        get foo() {
+          return this.a + this.b;
+        }
+
+        get bar() {
+          return this.a + this.b;
+        }
+
+        static get virtualAttributes() {
+          return ['foo'];
+        }
+      }
+
+      expect(
+        Model1.fromJson({
+          a: 100,
+          b: 10,
+          rel1: Model1.fromJson({ a: 101, b: 11 }),
+          rel2: [Model1.fromJson({ a: 102, b: 12 }), Model1.fromJson({ a: 103, b: 13 })]
+        }).$toJson({ virtuals: false })
+      ).to.eql({
+        a: 100,
+        b: 10,
+
+        rel1: {
+          a: 101,
+          b: 11
+        },
+
+        rel2: [{ a: 102, b: 12 }, { a: 103, b: 13 }]
       });
     });
 
@@ -1566,6 +1699,118 @@ describe('Model', () => {
     let model = Model.fromJson({ a: 1, b: 2 });
     model.$setJson(null);
     expect(model).to.eql({ a: 1, b: 2 });
+  });
+
+  it('$setRelated should set related model instances', () => {
+    let Model1 = modelClass('Model1');
+    let Model2 = modelClass('Model2');
+
+    Model1.relationMappings = {
+      hasMany: {
+        relation: Model.HasManyRelation,
+        modelClass: Model2,
+        join: {
+          from: 'Model1.id',
+          to: 'Model2.model1Id'
+        }
+      },
+      belongsToOne: {
+        relation: Model.BelongsToOneRelation,
+        modelClass: Model1,
+        join: {
+          from: 'Model1.id',
+          to: 'Model1.model1Id'
+        }
+      },
+      manyToMany: {
+        relation: Model.ManyToManyRelation,
+        modelClass: Model1,
+        join: {
+          from: 'Model1.id',
+          through: {
+            from: 'Model1_Model1.id1',
+            to: 'Model1_Model1.id2'
+          },
+          to: 'Model1.id'
+        }
+      }
+    };
+
+    const model1 = Model1.fromJson({});
+
+    model1.$setRelated('hasMany', Model2.fromJson({ id: 1 }));
+    expect(model1.hasMany).to.eql([{ id: 1 }]);
+
+    model1.$setRelated('hasMany', [Model2.fromJson({ id: 2 })]);
+    expect(model1.hasMany).to.eql([{ id: 2 }]);
+
+    model1.$setRelated('belongsToOne', Model1.fromJson({ id: 1 }));
+    expect(model1.belongsToOne).to.eql({ id: 1 });
+
+    model1.$setRelated('belongsToOne', [Model1.fromJson({ id: 2 })]);
+    expect(model1.belongsToOne).to.eql({ id: 2 });
+
+    model1.$setRelated('manyToMany', Model1.fromJson({ id: 1 }));
+    expect(model1.manyToMany).to.eql([{ id: 1 }]);
+
+    model1.$setRelated('manyToMany', [Model1.fromJson({ id: 2 })]);
+    expect(model1.manyToMany).to.eql([{ id: 2 }]);
+  });
+
+  it('appendRelated should append related model instances', () => {
+    let Model1 = modelClass('Model1');
+    let Model2 = modelClass('Model2');
+
+    Model1.relationMappings = {
+      hasMany: {
+        relation: Model.HasManyRelation,
+        modelClass: Model2,
+        join: {
+          from: 'Model1.id',
+          to: 'Model2.model1Id'
+        }
+      },
+      belongsToOne: {
+        relation: Model.BelongsToOneRelation,
+        modelClass: Model1,
+        join: {
+          from: 'Model1.id',
+          to: 'Model1.model1Id'
+        }
+      },
+      manyToMany: {
+        relation: Model.ManyToManyRelation,
+        modelClass: Model1,
+        join: {
+          from: 'Model1.id',
+          through: {
+            from: 'Model1_Model1.id1',
+            to: 'Model1_Model1.id2'
+          },
+          to: 'Model1.id'
+        }
+      }
+    };
+
+    const model1 = Model1.fromJson({});
+
+    model1.$appendRelated('hasMany', Model2.fromJson({ id: 1 }));
+    expect(model1.hasMany).to.eql([{ id: 1 }]);
+
+    model1.$appendRelated('hasMany', [Model2.fromJson({ id: 2 })]);
+    expect(model1.hasMany).to.eql([{ id: 1 }, { id: 2 }]);
+
+    model1.$appendRelated('belongsToOne', Model1.fromJson({ id: 1 }));
+    expect(model1.belongsToOne).to.eql({ id: 1 });
+
+    model1.$appendRelated('belongsToOne', [Model1.fromJson({ id: 2 })]);
+    expect(model1.belongsToOne).to.eql({ id: 2 });
+
+    model1.$appendRelated('manyToMany', Model1.fromJson({ id: 1 }));
+    expect(model1.manyToMany).to.eql([{ id: 1 }]);
+
+    model1.$appendRelated('manyToMany', [Model1.fromJson({ id: 2 })]);
+    expect(model1.manyToMany).to.eql([{ id: 1 }, { id: 2 }]);
   });
 
   it('$toJson should return result without relations if {shallow: true} is given as argument', () => {
@@ -1931,6 +2176,19 @@ describe('Model', () => {
     let Model1 = modelClass('Model1');
     Model1.knex({ fn: { a: 1 } });
     expect(Model1.fn()).to.eql({ a: 1 });
+  });
+
+  it('make sure JSON.stringify works with toJSON (#869)', () => {
+    class Person extends Model {
+      static get idColumn() {
+        return 'key';
+      }
+    }
+
+    const p1 = Person.fromJson({ key: 1 });
+    const p2 = Person.fromJson({ key: 2 });
+
+    JSON.stringify([p1, p2]);
   });
 
   function modelClass(tableName) {

@@ -337,6 +337,12 @@ import { lit, ref } from 'objection';
 await Model
   .query()
   .where(ref('Model.jsonColumn:details'), '=', lit({name: 'Jennifer', age: 29}))
+
+await Model
+  .query()
+  .insert({
+    numbers: lit([1, 2, 3]).asArray().castTo('real[]')
+  })
 ```
 
 Factory function that returns a [`LiteralBuilder`](#literalbuilder) instance. `LiteralBuilder`
@@ -880,6 +886,8 @@ The patch object is validated against the model's [`jsonSchema`](#jsonschema) _b
 of the [`jsonSchema`](#jsonschema) is ignored. This way the properties in the patch object are still validated
 but an error isn't thrown if the patch object doesn't contain all required properties.
 
+Values specified using field expressions and literals are not validated.
+
 If validation fails the Promise is rejected with a [`ValidationError`](#validationerror).
 
 NOTE: The return value of the query will be the number of affected rows. If you want to patch a single row and
@@ -1200,7 +1208,7 @@ await Person
   .query()
   .alias('p')
   .where('p.id', 1)
-  .join('Person as parent', 'parent.id', 'p.parentId')
+  .join('persons as parent', 'parent.id', 'p.parentId')
 ```
 
 Give an alias for the table to be used in the query.
@@ -1275,6 +1283,19 @@ Type|Description
 #### forShare
 
 See [knex documentation](http://knexjs.org/#Builder-forShare)
+
+##### Return value
+
+Type|Description
+----|-----------------------------
+[`QueryBuilder`](#querybuilder)|`this` query builder for chaining.
+
+
+
+
+#### timeout
+
+See [knex documentation](http://knexjs.org/#Builder-timeout)
 
 ##### Return value
 
@@ -1588,7 +1609,7 @@ await Person
 ```js
 await Person
   .query()
-  .select('Person.id', 'parent:parent.name as grandParentName')
+  .select('persons.id', 'parent:parent.name as grandParentName')
   .joinRelation('[pets, parent.[pets, parent]]')
   .where('parent:pets.species', 'dog');
 ```
@@ -1598,7 +1619,7 @@ await Person
 ```js
 await Person
   .query()
-  .select('Person.id', 'pr:pr.name as grandParentName')
+  .select('persons.id', 'pr:pr.name as grandParentName')
   .joinRelation('[pets, parent.[pets, parent]]', {
     aliases: {
       parent: 'pr',
@@ -3218,7 +3239,7 @@ after [`runBefore`](#runbefore) methods but before [`runAfter`](#runafter) metho
 If you need to modify the SQL query at query build time, this is the place to do it. You shouldn't
 modify the query in any of the `run` methods.
 
-Unlike the run methods these must be synchronous. Also you should not register any run methods
+Unlike the `run` methods (`runAfter`, `runBefore` etc.) these must be synchronous. Also you should not register any `run` methods
 from these. You should _only_ call the query building methods of the builder provided as a parameter.
 
 ##### Arguments
@@ -3226,6 +3247,52 @@ from these. You should _only_ call the query building methods of the builder pro
 Argument|Type|Description
 --------|----|--------------------
 onBuild|function([`QueryBuilder`](#querybuilder))|The function to be executed.
+
+##### Return value
+
+Type|Description
+----|-----------------------------
+[`QueryBuilder`](#querybuilder)|`this` query builder for chaining.
+
+
+
+
+#### onBuildKnex
+
+```js
+const builder = queryBuilder.onBuildKnex(onBuildKnex);
+```
+
+```js
+const query = Person.query();
+
+query
+ .onBuildKnex((knexBuilder, objectionBuilder) => {
+   knexBuilder.where('id', 1);
+ });
+```
+
+Functions registered with this method are called each time the query is built into an SQL string. This method is ran
+after [`onBuild`](#onbuild) methods but before [`runAfter`](#runafter) methods.
+
+If you need to modify the SQL query at query build time, this is the place to do it in addition to `onBuild`. The only
+difference between `onBuildKnex` and `onBuild` is that in `onBuild` you can modify the objection's query builder. In
+`onBuildKnex` the objection builder has been compiled into a knex query builder and any modifications to the objection
+builder will be ignored.
+
+Unlike the `run`  methods (`runAfter`, `runBefore` etc.) these must be synchronous. Also you should not register any `run` methods
+from these. You should _only_ call the query building methods of the __knexBuilder__ provided as a parameter.
+
+WARNING: You should never call any query building (or any other mutating) method on the `objectionBuilder` in
+         this function. If you do, those calls will get ignored. At this point the query builder has been
+         compiled into a knex query builder and you should only modify that. You can call non mutating methods
+         like `hasSelects`, `hasWheres` etc. on the objection builder.
+
+##### Arguments
+
+Argument|Type|Description
+--------|----|--------------------
+onBuildKnex|function(`KnexQueryBuilder`, [`QueryBuilder`](#querybuilder))|The function to be executed.
 
 ##### Return value
 
@@ -3955,13 +4022,24 @@ Type|Description
 const sql = queryBuilder.toString();
 ```
 
-Returns the SQL string. If this query builder executes multiple queries, only the first query's SQL is returned.
+Returns the SQL string suitable for logging input _but not for execution_, via Knex's `toString()`. This method should not be used to create queries for database execution because it makes no guarantees about escaping bindings properly.
+
+Note: In the current release, if the query builder attempts to execute multiple queries or throw any exception whatsoever, **no error will throw** and instead the following string is returned:
+
+```
+This query cannot be built synchronously. Consider using debug() method instead.
+```
+
+Later versions of Objection may introduce a native way to retrieve an executable SQL statement, or handle this behavior differently. If you need executable SQL, you can consider the unstable/private API `this.build().toSQL()`, which is the native Knex method that can [provide formatted bindings](http://knexjs.org/#Interfaces-toSQL).
+
+
+
 
 ##### Return value
 
 Type|Description
 ----|-----------------------------
-string|The SQL this query builder will build
+string|The SQL this query builder will build, or `This query cannot be built synchronously. Consider using debug() method instead.` if an exception is thrown
 
 
 
@@ -3972,13 +4050,15 @@ string|The SQL this query builder will build
 const sql = queryBuilder.toSql();
 ```
 
-Returns the SQL string. If this query builder executes multiple queries, only the first query's SQL is returned.
+An alias for `toSql()`.
+
+Note: The behavior of Objection's `toSql()` is different from Knex's `toSql()` (see above). This method may be deprecated soon.
 
 ##### Return value
 
 Type|Description
 ----|-----------------------------
-string|The SQL this query builder will build
+string|The SQL this query builder will build, or `This query cannot be built synchronously. Consider using debug() method instead.` if an exception is thrown
 
 
 
@@ -4646,7 +4726,7 @@ Type|Description
 class Person extends Model {
   // Table name is the only required property.
   static get tableName() {
-    return 'Person';
+    return 'persons';
   }
 
   // Optional JSON schema. This is not the database schema!
@@ -4695,8 +4775,8 @@ class Person extends Model {
         // path version here to prevent require loops.
         modelClass: __dirname + '/Animal',
         join: {
-          from: 'Person.id',
-          to: 'Animal.ownerId'
+          from: 'persons.id',
+          to: 'animals.ownerId'
         }
       },
 
@@ -4704,12 +4784,12 @@ class Person extends Model {
         relation: Model.ManyToManyRelation,
         modelClass: __dirname + '/Movie',
         join: {
-          from: 'Person.id',
+          from: 'persons.id',
           // ManyToMany relation needs the `through` object
           // to describe the join table.
           through: {
-            from: 'Person_Movie.actorId',
-            to: 'Person_Movie.movieId'
+            from: 'persons_movies.actorId',
+            to: 'persons_movies.movieId'
 
             // If you have a model class for the join table
             // you can specify it like this:
@@ -4723,7 +4803,7 @@ class Person extends Model {
             //
             // extra: ['someExtra']
           },
-          to: 'Movie.id'
+          to: 'movies.id'
         }
       },
 
@@ -4731,8 +4811,8 @@ class Person extends Model {
         relation: Model.HasManyRelation,
         modelClass: Person,
         join: {
-          from: 'Person.id',
-          to: 'Person.parentId'
+          from: 'persons.id',
+          to: 'persons.parentId'
         }
       },
 
@@ -4740,8 +4820,8 @@ class Person extends Model {
         relation: Model.BelongsToOneRelation,
         modelClass: Person,
         join: {
-          from: 'Person.parentId',
-          to: 'Person.id'
+          from: 'persons.parentId',
+          to: 'persons.id'
         }
       }
     };
@@ -4792,7 +4872,7 @@ properties. All properties that start with `$` are also removed from `database` 
 ```js
 class Person extends Model {
   static get tableName() {
-    return 'Person';
+    return 'persons';
   }
 }
 ```
@@ -4801,7 +4881,7 @@ class Person extends Model {
 
 ```js
 class Person extends Model {
-  static tableName = 'Person';
+  static tableName = 'persons';
 }
 ```
 
@@ -4989,19 +5069,23 @@ shared configuration such as this there.
 const { Model, ref } = require('objection');
 
 class Person extends Model {
+  static get tableName() {
+    return 'persons';
+  }
+
   static get relationMappings() {
     return {
       pets: {
         relation: Model.HasManyRelation,
         modelClass: Animal,
         join: {
-          from: 'Person.id',
+          from: 'persons.id',
           // Any of the `to` and `from` fields can also be
           // references to nested fields (or arrays of references).
-          // Here the relation is created between `Person.id` and
-          // `Animal.json.details.ownerId` properties. The reference
+          // Here the relation is created between `persons.id` and
+          // `animals.json.details.ownerId` properties. The reference
           // must be casted to the same type as the other key.
-          to: ref('Animal.json:details.ownerId').castInt()
+          to: ref('animals.json:details.ownerId').castInt()
         }
       },
 
@@ -5009,8 +5093,8 @@ class Person extends Model {
         relation: Model.BelongsToOneRelation,
         modelClass: Person,
         join: {
-          from: 'Person.fatherId',
-          to: 'Person.id'
+          from: 'persons.fatherId',
+          to: 'persons.id'
         }
       },
 
@@ -5018,10 +5102,10 @@ class Person extends Model {
         relation: Model.ManyToManyRelation,
         modelClass: Movie,
         join: {
-          from: 'Person.id',
+          from: 'persons.id',
           through: {
-            from: 'Person_Movie.actorId',
-            to: 'Person_Movie.movieId'
+            from: 'persons_movies.actorId',
+            to: 'persons_movies.movieId'
 
             // If you have a model class for the join table
             // you can specify it like this:
@@ -5035,7 +5119,7 @@ class Person extends Model {
             //
             // extra: ['someExtra']
           },
-          to: 'Movie.id'
+          to: 'movies.id'
         }
       }
     };
@@ -5049,18 +5133,20 @@ class Person extends Model {
 import { Model, ref } from 'objection';
 
 class Person extends Model {
+  static tableName = 'persons';
+
   static relationMappings = {
     pets: {
       relation: Model.HasManyRelation,
       modelClass: Animal,
       join: {
-        from: 'Person.id',
+        from: 'persons.id',
         // Any of the `to` and `from` fields can also be
         // references to nested fields (or arrays of references).
-        // Here the relation is created between `Person.id` and
-        // `Animal.json.details.ownerId` properties. The reference
+        // Here the relation is created between `persons.id` and
+        // `animals.json.details.ownerId` properties. The reference
         // must be casted to the same type as the other key.
-        to: ref('Animal.json:details.ownerId').castInt()
+        to: ref('animals.json:details.ownerId').castInt()
       }
     },
 
@@ -5068,8 +5154,8 @@ class Person extends Model {
       relation: Model.BelongsToOneRelation,
       modelClass: Person,
       join: {
-        from: 'Person.fatherId',
-        to: 'Person.id'
+        from: 'persons.fatherId',
+        to: 'persons.id'
       }
     },
 
@@ -5077,10 +5163,10 @@ class Person extends Model {
       relation: Model.ManyToManyRelation,
       modelClass: Movie,
       join: {
-        from: 'Person.id',
+        from: 'persons.id',
         through: {
-          from: 'Person_Movie.actorId',
-          to: 'Person_Movie.movieId'
+          from: 'persons_movies.actorId',
+          to: 'persons_movies.movieId'
 
           // If you have a model class for the join table
           // you can specify it like this:
@@ -5094,7 +5180,7 @@ class Person extends Model {
           //
           // extra: ['someExtra']
         },
-        to: 'Movie.id'
+        to: 'movies.id'
       }
     }
   };
@@ -5135,16 +5221,16 @@ beforeInsert|function([`Model`](#model), [`QueryContext`](#context))|Optional in
 
 Property|Type|Description
 --------|----|-----------
-from|string&#124;[`ReferenceBuilder`](#ref)&#124;Array|The relation column in the owner table. Must be given with the table name. For example `Person.id`. Composite key can be specified using an array of columns e.g. `['Person.a', 'Person.b']`. Note that neither this nor `to` need to be foreign keys or primary keys. You can join any column to any column. You can even join nested json fields using the [`ref`](#ref) helper.
-to|string&#124;[`ReferenceBuilder`](#ref)&#124;Array|The relation column in the related table. Must be given with the table name. For example `Movie.id`. Composite key can be specified using an array of columns e.g. `['Movie.a', 'Movie.b']`. Note that neither this nor `from` need to be foreign keys or primary keys. You can join any column to any column. You can even join nested json fields using the [`ref`](#ref) helper.
+from|string&#124;[`ReferenceBuilder`](#ref)&#124;Array|The relation column in the owner table. Must be given with the table name. For example `persons.id`. Composite key can be specified using an array of columns e.g. `['persons.a', 'persons.b']`. Note that neither this nor `to` need to be foreign keys or primary keys. You can join any column to any column. You can even join nested json fields using the [`ref`](#ref) helper.
+to|string&#124;[`ReferenceBuilder`](#ref)&#124;Array|The relation column in the related table. Must be given with the table name. For example `movies.id`. Composite key can be specified using an array of columns e.g. `['movies.a', 'movies.b']`. Note that neither this nor `from` need to be foreign keys or primary keys. You can join any column to any column. You can even join nested json fields using the [`ref`](#ref) helper.
 through|[`RelationThrough`](#relationthrough)|Describes the join table if the models are related through one.
 
 ##### RelationThrough
 
 Property|Type|Description
 --------|----|-----------
-from|string&#124;[`ReferenceBuilder`](#ref)&#124;Array|The column that is joined to `from` property of the `RelationJoin`. For example `Person_Movie.actorId` where `Person_Movie` is the join table. Composite key can be specified using an array of columns e.g. `['Person_Movie.a', 'Person_Movie.b']`. You can join nested json fields using the [`ref`](#ref) helper.
-to|string&#124;[`ReferenceBuilder`](#ref)&#124;Array|The column that is joined to `to` property of the `RelationJoin`. For example `Person_Movie.movieId` where `Person_Movie` is the join table. Composite key can be specified using an array of columns e.g. `['Person_Movie.a', 'Person_Movie.b']`. You can join nested json fields using the [`ref`](#ref) helper.
+from|string&#124;[`ReferenceBuilder`](#ref)&#124;Array|The column that is joined to `from` property of the `RelationJoin`. For example `Person_movies.actorId` where `Person_movies` is the join table. Composite key can be specified using an array of columns e.g. `['persons_movies.a', 'persons_movies.b']`. You can join nested json fields using the [`ref`](#ref) helper.
+to|string&#124;[`ReferenceBuilder`](#ref)&#124;Array|The column that is joined to `to` property of the `RelationJoin`. For example `Person_movies.movieId` where `Person_movies` is the join table. Composite key can be specified using an array of columns e.g. `['persons_movies.a', 'persons_movies.b']`. You can join nested json fields using the [`ref`](#ref) helper.
 modelClass|string&#124;ModelClass|If you have a model class for the join table, you should specify it here. This is optional so you don't need to create a model class if you don't want to.
 extra|string[]&#124;Object|Columns listed here are automatically joined to the related objects when they are fetched and automatically written to the join table instead of the related table on insert. The values can be aliased by providing an object `{propertyName: 'columnName', otherPropertyName: 'otherColumnName'} instead of array`
 beforeInsert|function([`Model`](#model), [`QueryContext`](#context))|Optional insert hook that is called for each inserted join table model instance. This function can be async.
@@ -5612,7 +5698,8 @@ const people = await Person.query();
 console.log('there are', people.length, 'people in the database');
 
 // Example of a more complex WHERE clause. This generates:
-// SELECT FROM "Person"
+// SELECT "persons".*
+// FROM "persons"
 // WHERE ("firstName" = 'Jennifer' AND "age" < 30)
 // OR ("firstName" = 'Mark' AND "age" > 30)
 const marksAndJennifers = await Person
@@ -5707,6 +5794,10 @@ console.log('anyone over 90 is now removed from the database');
 
 Creates a query builder for the model's table.
 
+All query builders are created using this function, including $query, $relatedQuery and relatedQuery.
+That means you can modify each query by overriding this method for your model class. This is especially
+useful when combined with the use of [`onBuild`](#onbuild).
+
 See the [query examples](#query-examples) section for more examples.
 
 ##### Arguments
@@ -5736,7 +5827,7 @@ const queryBuilder = Person.relatedQuery(relationName);
 const people = await Person
   .query()
   .select([
-    'Person.*',
+    'persons.*',
 
     Person.relatedQuery('pets')
       .count()
@@ -5761,7 +5852,17 @@ const peopleThatHavePets = await Person
   .whereExists(Person.relatedQuery('pets'));
 ```
 
+> Generates something like this:
+
+```sql
+select "persons".* from "persons" where exists (select "pets".* from "animals" as "pets" where "pets"."ownerId" = "persons"."id")
+```
+
 Creates a subquery to a relation.
+
+This query can only be used as a subquery and therefore there is no need to ever pass
+a transaction or a knex instance to it. It will always inherit its parent query's
+transaction because it is compiled and executed as a part of the parent query.
 
 ##### Arguments
 
@@ -6301,6 +6402,84 @@ string|The column name
 
 
 
+#### fetchTableMetadata
+
+```js
+const metadata = await Person.fetchTableMetadata(opt);
+```
+
+Fetches and caches the table metadata.
+
+Most of the time objection doesn't need this metadata, but some methods like `joinEager` do. This
+method is called by objection when the metadata is needed. The result is cached and after the first
+call the cached promise is returned and no queries are executed.
+
+Because objection uses this on demand, the first query that needs this information can have
+unpredicable performance. If that's a problem, you can call this method for each of your models
+during your app's startup.
+
+If you've implemented [`tableMetadata`](#tablemetadata) method to return a custom metadata object,
+this method doesn't execute database queries, but returns `Promise.resolve(this.tableMetadata())`
+instead.
+
+##### Arguments
+
+Argument|Type|Description
+--------|----|-------------------
+opt|[`TableMetadataFetchOptions`](#tablemetadatafetchoptions)|Optional options
+
+##### Return value
+
+Type|Description
+----|-----------------------------
+Promise&lt;[`TableMetadata`](#tablemetadata-prop)&gt;|The table metadata object
+
+
+
+
+
+
+#### tableMetadata
+
+```js
+const metadata = Person.tableMetadata(opt);
+```
+
+> A custom override that uses the property information in `jsonSchema`.
+
+```js
+class Person extends Model {
+  static tableMetadata() {
+    return {
+      columns: Object.keys(this.jsonSchema.properties)
+    };
+  }
+}
+```
+
+Synchronously returns the table metadata object from the cache.
+
+You can override this method to return a custom object if you don't want objection to use
+[`fetchTableMetadata`](#fetchtablemetadata).
+
+See [`fetchTableMetadata`](#fetchtablemetadata) for more information.
+
+##### Arguments
+
+Argument|Type|Description
+--------|----|-------------------
+opt|[`TableMetadataOptions`](#tablemetadataoptions)|Optional options
+
+##### Return value
+
+Type|Description
+----|-----------------------------
+[`TableMetadata`](#tablemetadata-prop)|The table metadata object
+
+
+
+
+
 
 ### Instance methods
 
@@ -6416,7 +6595,7 @@ const jsonObj = modelInstance.$toJson(opt);
 ```
 
 ```js
-const shallowObj = modelInstance.$toJson({shallow: true});
+const shallowObj = modelInstance.$toJson({shallow: true, virtuals: true});
 ```
 
 Exports this model as a JSON object.
@@ -6425,7 +6604,7 @@ Exports this model as a JSON object.
 
 Argument|Type|Description
 --------|----|--------------------
-opt|[`CloneOptions`](#cloneoptions)|Optional options
+opt|[`ToJsonOptions`](#tojsonoptions)|Optional options
 
 ##### Return value
 
@@ -6443,7 +6622,7 @@ const jsonObj = modelInstance.toJSON(opt);
 ```
 
 ```js
-const shallowObj = modelInstance.toJSON({shallow: true});
+const shallowObj = modelInstance.toJSON({shallow: true, virtuals: true});
 ```
 
 Exports this model as a JSON object.
@@ -6452,7 +6631,7 @@ Exports this model as a JSON object.
 
 Argument|Type|Description
 --------|----|--------------------
-opt|[`CloneOptions`](#cloneoptions)|Optional options
+opt|[`ToJsonOptions`](#tojsonoptions)|Optional options
 
 ##### Return value
 
@@ -7041,11 +7220,11 @@ console.log(jennifer.pets === pets); // --> true
 ```js
 const dogsAndCats = await jennifer
   .$relatedQuery('pets')
-  .select('Animal.*', 'Person.name as ownerName')
+  .select('animals.*', 'persons.name as ownerName')
   .where('species', '=', 'dog')
   .orWhere('breed', '=', 'cat')
-  .innerJoin('Person', 'Person.id', 'Animal.ownerId')
-  .orderBy('Animal.name');
+  .innerJoin('persons', 'persons.id', 'animals.ownerId')
+  .orderBy('animals.name');
 
 // All the dogs and cats have the owner's name "Jennifer"
 // joined as the `ownerName` property.
@@ -7677,8 +7856,8 @@ Field expressions allow one to refer to JSONB fields inside columns.
 
 Syntax: `<column reference>[:<json field reference>]`
 
-e.g. `Person.jsonColumnName:details.names[1]` would refer to value `'Second'`
-in column `Person.jsonColumnName` which has
+e.g. `persons.jsonColumnName:details.names[1]` would refer to value `'Second'`
+in column `persons.jsonColumnName` which has
 `{ details: { names: ['First', 'Second', 'Last'] } }` object stored in it.
 
 First part `<column reference>` is compatible with column references used in
@@ -7810,6 +7989,87 @@ the `^` character. For example `parent.^3` is equal to `parent.parent.parent`.
 
 Relations can be aliased using the `as` keyword.
 
+### RelationExpression object notation
+
+> The string expression in the comment is equivalent to the object expression below it:
+
+```js
+// `children`
+{
+  children: true
+}
+```
+
+```js
+// `children.movies`
+{
+  children: {
+    movies: true
+  }
+}
+```
+
+```js
+// `[children, pets]`
+{
+  children: true
+  pets: true
+}
+```
+
+```js
+// `[children.[movies, pets], pets]`
+{
+  children: {
+    movies: true,
+    pets: true
+  }
+  pets: true
+}
+```
+
+```js
+// `parent.^`
+{
+  parent: {
+    $recursive: true
+  }
+}
+```
+
+```js
+// `parent.^5`
+{
+  parent: {
+    $recursive: 5
+  }
+}
+```
+
+```js
+// `parent.*`
+{
+  parent: {
+    $allRecursive: true
+  }
+}
+```
+
+```js
+// `[children as kids, pets(filterDogs) as dogs]`
+{
+  kids: {
+    $relation: 'children'
+  },
+
+  dogs: {
+    $relation: 'pets',
+    $modify: ['filterDogs']
+  }
+}
+```
+
+In addition to the string expressions, a more verbose object notation can also be used.
 
 ## Validator
 
@@ -8030,6 +8290,17 @@ shallow|boolean|If true, relations are ignored
 
 
 
+
+## ToJsonOptions
+
+Property|Type|Description
+--------|----|-----------
+shallow|boolean|If true, relations are ignored. Default is false.
+virtuals|boolean|If false, virtual attributes are omitted from the output. Default is true.
+
+
+
+
 ## EagerOptions
 
 Property|Type|Description
@@ -8062,6 +8333,25 @@ Property|Type|Description
 --------|----|-----------
 relate|boolean&#124;string[]|If true, models with an `id` are related instead of inserted. Relate functionality can be enabled for a subset of relations of the graph by providing a list of relation expressions. See the examples [here](#graph-inserts).
 
+## TableMetadataFetchOptions
+
+Property|Type|Description
+--------|----|-----------
+table|string|A custom table name. If not given, Model.tableName is used.
+knex|knex&#124;Transaction|A knex instance or a transaction
+
+## TableMetadataOptions
+
+Property|Type|Description
+--------|----|-----------
+table|string|A custom table name. If not given, Model.tableName is used.
+
+<h2 id="tablemetadata-prop">TableMetadata</h2>
+
+Property|Type|Description
+--------|----|-----------
+columns|string[]|Names of all the columns in a table.
+
 ## Relation
 
 > Note that `Relation` instances are actually instances of the relation classes used in `relationMappings`. For example:
@@ -8074,8 +8364,8 @@ class Person extends Model {
         relation: Model.HasManyRelation,
         modelClass: Animal,
         join: {
-          from: 'Person.id',
-          to: 'Animal.ownerId'
+          from: 'persons.id',
+          to: 'animals.ownerId'
         }
       }
     };
@@ -8228,7 +8518,15 @@ Cast reference to sql type `boolean`.
 
 Give custom type to which referenced value is casted to.
 
+**DEPRECATED:** Use `castTo` instead. `castType` Will be removed in 2.0.
+
 `.castType('mytype') --> CAST(?? as mytype)`
+
+#### castTo
+
+Give custom type to which referenced value is casted to.
+
+`.castTo('mytype') --> CAST(?? as mytype)`
 
 #### castJson
 
@@ -8280,9 +8578,17 @@ Cast to sql type `boolean`.
 
 #### castType
 
-Cast to custom type
+Give custom type to which referenced value is casted to.
+
+**DEPRECATED:** Use `castTo` instead. `castType` Will be removed in 2.0.
 
 `.castType('mytype') --> CAST(?? as mytype)`
+
+#### castTo
+
+Give custom type to which referenced value is casted to.
+
+`.castTo('mytype') --> CAST(?? as mytype)`
 
 #### castJson
 
@@ -8292,6 +8598,18 @@ cast type for object values.
 #### castArray
 
 Converts the value to an array literal.
+
+**DEPRECATED:** Use `asArray` instead. `castArray` Will be removed in 2.0.
+
+#### asArray
+
+Converts the value to an array literal.
+
+`lit([1, 2, 3]).asArray() --> ARRAY[?, ?, ?]`
+
+Can be used in conjuction with `castTo`.
+
+`lit([1, 2, 3]).asArray().castTo('real[]') -> CAST(ARRAY[?, ?, ?] AS real[])`
 
 #### as
 

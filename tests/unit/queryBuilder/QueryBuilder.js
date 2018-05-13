@@ -266,6 +266,13 @@ describe('QueryBuilder', () => {
       });
   });
 
+  it('should return a QueryBuilder from .timeout method', () => {
+    const builder = QueryBuilder.forClass(TestModel).timeout(3000);
+
+    expect(builder).to.be.a(QueryBuilder);
+    return builder;
+  });
+
   describe('where(..., ref(...))', () => {
     it('should create a where clause using column references instead of values (1)', () => {
       return QueryBuilder.forClass(TestModel)
@@ -363,7 +370,7 @@ describe('QueryBuilder', () => {
         .whereInComposite(['A.a', 'B.b'], [[1, 2], [3, 4]])
         .then(() => {
           expect(executedQueries).to.eql([
-            'select "Model".* from "Model" where ("A"."a", "B"."b") in ((1, 2),(3, 4))'
+            'select "Model".* from "Model" where ("A"."a", "B"."b") in ((1, 2), (3, 4))'
           ]);
         });
     });
@@ -447,15 +454,21 @@ describe('QueryBuilder', () => {
         expect(this).to.equal(builder);
         text += 'b';
       })
-      .runAfter(function(data, builder) {
+      .onBuildKnex(function(knexBuilder, builder) {
         expect(builder).to.be.a(QueryBuilder);
-        expect(this).to.equal(builder);
+        expect(knexUtils.isKnexQueryBuilder(knexBuilder)).to.equal(true);
+        expect(this).to.equal(knexBuilder);
         text += 'c';
       })
       .runAfter(function(data, builder) {
         expect(builder).to.be.a(QueryBuilder);
         expect(this).to.equal(builder);
         text += 'd';
+      })
+      .runAfter(function(data, builder) {
+        expect(builder).to.be.a(QueryBuilder);
+        expect(this).to.equal(builder);
+        text += 'e';
       })
       .runAfter(() => {
         throw new Error('abort');
@@ -464,10 +477,10 @@ describe('QueryBuilder', () => {
         expect(builder).to.be.a(QueryBuilder);
         expect(this).to.equal(builder);
         expect(err.message).to.equal('abort');
-        text += 'e';
+        text += 'f';
       })
       .then(() => {
-        expect(text).to.equal('abcde');
+        expect(text).to.equal('abcdef');
         done();
       })
       .catch(err => {

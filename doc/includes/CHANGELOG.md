@@ -1,5 +1,81 @@
 # Changelog
 
+## 1.1.9
+
+### What's new
+
+  * fix [#782](https://github.com/Vincit/objection.js/issues/782)
+
+## 1.1.8
+
+### What's new
+
+  * fix [#909](https://github.com/Vincit/objection.js/issues/909)
+
+## 1.1.7
+
+### What's new
+
+  * fix [#884](https://github.com/Vincit/objection.js/issues/884)
+
+## 1.1.6
+
+### What's new
+
+  * Add typings for fetchTableMetadata, tableMetadata and onbuildknex
+
+## 1.1.5
+
+### What's new
+
+  * Make [Model.fetchTableMetadata](#fetchtablemetadata) and [Model.tableMetadata](#tablemetadata) methods public. [#871](https://github.com/Vincit/objection.js/issues/871)
+  * Add [onBuildKnex](#onbuildknex) query builder hook. [#807](https://github.com/Vincit/objection.js/issues/807)
+
+## 1.1.4
+
+### What's new
+
+  * fix subquery bug causing incompatibility with knex 0.14.5 and sqlite3
+
+## 1.1.3
+
+### What's new
+
+  * fix regression in 1.1.2 (sorry about this) [#869](https://github.com/Vincit/objection.js/issues/869)
+
+## 1.1.2
+
+### What's new
+
+  * Add `virtuals` option for `toJSON` and `$toJson` [#866](https://github.com/Vincit/objection.js/issues/866)
+  * fix [#868](https://github.com/Vincit/objection.js/issues/868)
+
+## 1.1.1
+
+### What's new
+
+  * fix [#865](https://github.com/Vincit/objection.js/issues/865)
+  * fix bug where the static `Model.relatedQuery` didn't use the relation name as an alias for the table. This may break
+    code if you have explicitly referenced the subquery table. [#859](https://github.com/Vincit/objection.js/issues/859)
+
+## 1.1.0
+
+### What's new
+
+  * Optional [object notation](#relationexpression-object-notation) for relation expressions.
+  * fix [#855](https://github.com/Vincit/objection.js/issues/855)
+  * fix [#858](https://github.com/Vincit/objection.js/issues/858)
+
+## 1.0.1
+
+### What's new
+
+  * Added public [Relation.joinModelClass](#relation) accessor
+  * Don't call `returning` on sqlite (prevents a warning message added in knex 0.14.4)
+  * fix [#844](https://github.com/Vincit/objection.js/issues/844)
+  * Small documentation updates
+  * Small typing fixes end updates
+
 ## 1.0.0 🎉
 
 ### What's new

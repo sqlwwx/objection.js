@@ -1843,6 +1843,321 @@ module.exports = session => {
       });
     });
 
+    describe('relate with children => upsertGraph recursively called', () => {
+      beforeEach(() => {
+        population = [
+          {
+            id: 1,
+            model1Prop1: 'root 1',
+            model1Relation3: [
+              {
+                idCol: 1,
+                model2Prop1: 'manyToMany 1',
+                // This is a ManyToManyRelation
+                model2Relation3: [
+                  {
+                    id: 1,
+                    model3Prop1: 'model3Prop1 1'
+                  },
+                  {
+                    id: 3,
+                    model3Prop1: 'model3Prop1 3'
+                  }
+                ],
+                model2Relation2: {
+                  id: 3,
+                  model1Prop1: 'hasOne 3'
+                }
+              }
+            ]
+          },
+          {
+            id: 2,
+            model1Prop1: 'root 2',
+            // This is a ManyToManyRelation
+            model1Relation3: [
+              {
+                idCol: 2,
+                model2Prop1: 'manyToMany 2',
+                // This is a ManyToManyRelation
+                model2Relation3: [
+                  {
+                    id: 2,
+                    model3Prop1: 'model3Prop1 2'
+                  },
+                  {
+                    id: 4,
+                    model3Prop1: 'model3Prop1 4'
+                  }
+                ],
+                model2Relation2: {
+                  id: 4,
+                  model1Prop1: 'hasOne 4'
+                }
+              }
+            ]
+          },
+          {
+            id: 5,
+            model1Prop1: 'root 5'
+          },
+          {
+            id: 6,
+            model1Prop1: 'root 6'
+          },
+          {
+            id: 7,
+            model1Prop1: 'root 7'
+          }
+        ];
+
+        return session.populate(population);
+      });
+
+      it('should relate BelongsToOne relation and nested children as expected', () => {
+        const upsert = {
+          id: 2,
+          model1Prop1: 'updated root 2',
+          // Relate new BelongsToOne relation
+          model1Relation1: {
+            id: 6,
+            model1Prop1: 'belongs to one 6',
+            // Relate new and update ManyToMany relation
+            model1Relation3: [
+              {
+                idCol: 2,
+                // Relate new and update ManyToMany relation
+                model2Relation3: [{ id: 1 }]
+              }
+            ]
+          }
+        };
+
+        return transaction(session.knex, trx => {
+          return Model1.query(trx)
+            .upsertGraph(upsert, { relate: true, unrelate: true })
+            .then(() => {
+              return Model1.query(trx)
+                .findById(2)
+                .eager('[model1Relation1.[model1Relation3.model2Relation3]]')
+                .modifyEager('model1Relation3', qb => qb.orderBy('id_col'))
+                .modifyEager('model1Relation3.model2Relation1', qb => qb.orderBy('id'));
+            })
+            .then(omitIrrelevantProps)
+            .then(result => {
+              expect(result).to.eql({
+                id: 2,
+                model1Id: 6,
+                model1Relation1: {
+                  id: 6,
+                  model1Prop1: 'belongs to one 6',
+                  model1Id: null,
+                  model1Relation3: [
+                    {
+                      extra1: null,
+                      extra2: null,
+                      idCol: 2,
+                      model1Id: null,
+                      model2Prop1: 'manyToMany 2',
+                      model2Relation3: [{ id: 1, model3Prop1: 'model3Prop1 1' }]
+                    }
+                  ]
+                },
+                model1Prop1: 'updated root 2'
+              });
+            });
+        });
+      });
+
+      it('should relate ManyToMany relations and children as expected', () => {
+        const upsert = {
+          id: 2,
+          model1Prop1: 'updated root 2',
+          // Relate new and update ManyToMany relation
+          model1Relation3: [
+            {
+              idCol: 1,
+              model2Prop1: 'updated model2Prop1',
+              // Relate new and update Has Many relation
+              model2Relation2: {
+                id: 5,
+                model1Prop1: 'updated root 5',
+                // Update BelongsToOne
+                model1Relation1: {
+                  id: 1
+                }
+              }
+            }
+          ]
+        };
+
+        return transaction(session.knex, trx => {
+          return Model1.query(trx)
+            .upsertGraph(upsert, { relate: true, unrelate: true })
+            .then(() => {
+              return Model1.query(trx)
+                .findById(2)
+                .eager('[model1Relation3.[model2Relation2.model1Relation1]]')
+                .modifyEager('model1Relation3', qb => qb.orderBy('id_col'))
+                .modifyEager('model1Relation3.model2Relation1', qb => qb.orderBy('id'));
+            })
+            .then(omitIrrelevantProps)
+            .then(result => {
+              expect(result).to.eql({
+                id: 2,
+                model1Id: null,
+                model1Prop1: 'updated root 2',
+                model1Relation3: [
+                  {
+                    extra1: null,
+                    extra2: null,
+                    idCol: 1,
+                    model1Id: null,
+                    model2Prop1: 'updated model2Prop1',
+                    model2Relation2: {
+                      id: 5,
+                      model1Id: 1,
+                      model1Prop1: 'updated root 5',
+                      model1Relation1: {
+                        id: 1,
+                        model1Id: null,
+                        model1Prop1: 'root 1'
+                      }
+                    }
+                  }
+                ]
+              });
+            });
+        });
+      });
+
+      it('should relate HasMany relations and children as expected', () => {
+        const upsert = {
+          id: 2,
+          model1Prop1: 'updated root 2',
+          // Relate new and update ManyToMany relation
+          model1Relation2: [
+            {
+              idCol: 1,
+              model2Prop1: 'updated model2Prop1',
+              // Relate new and update Has Many relation
+              model2Relation2: {
+                id: 5,
+                model1Prop1: 'updated root 5',
+                // Update BelongsToOne
+                model1Relation1: {
+                  id: 1
+                }
+              }
+            }
+          ]
+        };
+
+        return transaction(session.knex, trx => {
+          return Model1.query(trx)
+            .upsertGraph(upsert, { relate: true, unrelate: true })
+            .then(() => {
+              return Model1.query(trx)
+                .findById(2)
+                .eager('[model1Relation2.[model2Relation2.model1Relation1]]')
+                .modifyEager('model1Relation2', qb => qb.orderBy('id_col'))
+                .modifyEager('model1Relation2.model2Relation1', qb => qb.orderBy('id'));
+            })
+            .then(omitIrrelevantProps)
+            .then(result => {
+              expect(result).to.eql({
+                id: 2,
+                model1Id: null,
+                model1Prop1: 'updated root 2',
+                model1Relation2: [
+                  {
+                    idCol: 1,
+                    model1Id: 2,
+                    model2Prop1: 'updated model2Prop1',
+                    model2Relation2: {
+                      id: 5,
+                      model1Id: 1,
+                      model1Prop1: 'updated root 5',
+                      model1Relation1: {
+                        id: 1,
+                        model1Id: null,
+                        model1Prop1: 'root 1'
+                      }
+                    }
+                  }
+                ]
+              });
+            });
+        });
+      });
+
+      it('should upsert recursively and respect options', () => {
+        const upsert = {
+          id: 2,
+          model1Prop1: 'updated root 2',
+          // Relate new and update ManyToMany relation
+          model1Relation3: [
+            {
+              idCol: 1,
+              model2Prop1: 'updated model2Prop1',
+              // Relate new and update ManyToMany relation
+              model2Relation3: [{ id: 2 }]
+            }
+          ]
+        };
+
+        return transaction(session.knex, trx => {
+          return Model1.query(trx)
+            .upsertGraph(upsert, {
+              relate: ['model1Relation3', 'model1Relation3.model2Relation3'],
+              noUnrelate: ['model1Relation3.model2Relation3'],
+              noDelete: ['model1Relation3.model2Relation3']
+            })
+            .then(() => {
+              return Model1.query(trx)
+                .findById(2)
+                .eager('[model1Relation3.[model2Relation3]]')
+                .modifyEager('model1Relation3', qb => qb.orderBy('id_col'))
+                .modifyEager('model1Relation3.model2Relation3', qb => qb.orderBy('id'));
+            })
+            .then(omitIrrelevantProps)
+            .then(result => {
+              expect(result).to.eql({
+                id: 2,
+                model1Id: null,
+                model1Prop1: 'updated root 2',
+                model1Relation3: [
+                  {
+                    extra1: null,
+                    extra2: null,
+                    idCol: 1,
+                    model1Id: null,
+                    model2Prop1: 'updated model2Prop1',
+                    model2Relation3: [
+                      // Existing, but not removed
+                      {
+                        id: 1,
+                        model3Prop1: 'model3Prop1 1'
+                      },
+                      // Related
+                      {
+                        id: 2,
+                        model3Prop1: 'model3Prop1 2'
+                      },
+                      // Existing, but not removed
+                      {
+                        id: 3,
+                        model3Prop1: 'model3Prop1 3'
+                      }
+                    ]
+                  }
+                ]
+              });
+            });
+        });
+      });
+    });
+
     describe('validation and transactions', () => {
       before(() => {
         Model1.$$jsonSchema = {

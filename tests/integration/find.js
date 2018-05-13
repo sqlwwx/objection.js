@@ -1,11 +1,10 @@
 const _ = require('lodash');
-const raw = require('../../').raw;
-const ref = require('../../').ref;
 const utils = require('../../lib/utils/knexUtils');
 const expect = require('expect.js');
 const Promise = require('bluebird');
-const Model = require('../../').Model;
-const QueryBuilderOperation = require('../../').QueryBuilderOperation;
+
+const { TimeoutError } = require('bluebird');
+const { raw, ref, Model, QueryBuilderOperation } = require('../..');
 
 module.exports = session => {
   let Model1 = session.models.Model1;
@@ -43,7 +42,7 @@ module.exports = session => {
         ]);
       });
 
-      it('should return all rows when no knex m§ethods are chained', () => {
+      it('should return all rows when no knex methods are chained', () => {
         return Model1.query()
           .then(models => {
             expect(models[0]).to.be.a(Model1);
@@ -169,6 +168,23 @@ module.exports = session => {
             .then(models => {
               // Three items because Model1 (id = 1) has three related Model2 instances.
               expect(models.length).to.equal(3);
+            });
+        });
+
+        it('.join() with objection.raw', () => {
+          return Model1.query()
+            .findByIds(1)
+            .select('Model1.id as model1Id', 'model2.id_col as model2Id')
+            .join('model2', builder => {
+              builder.andOn(raw('?? = ??', ['Model1.id', 'model2.model1_id']));
+            })
+            .orderBy('model2.id_col')
+            .then(result => {
+              expect(result).to.eql([
+                { model1Id: 1, model2Id: 1, $afterGetCalled: 1 },
+                { model1Id: 1, model2Id: 2, $afterGetCalled: 1 },
+                { model1Id: 1, model2Id: 3, $afterGetCalled: 1 }
+              ]);
             });
         });
 
@@ -519,87 +535,6 @@ module.exports = session => {
             });
         });
 
-        if (session.isPostgres()) {
-          it('smoke test for various methods', () => {
-            // This test doesn't actually test that the methods work. Knex has tests
-            // for these. This is a smoke test in case of typos and such.
-            return Model2.query()
-              .with('wm1', builder =>
-                builder
-                  .insert({ a: 1 })
-                  .update({ a: 2 })
-                  .delete()
-                  .del()
-                  .table('model2')
-                  .clear(QueryBuilderOperation)
-                  .select('*')
-                  .from('model2')
-              )
-              .clearSelect()
-              .clearWhere()
-              .columns('model2.model2_prop2')
-              .where(raw('? = ?', ref('model2.id_col'), ref('model2.model2_prop2')))
-              .where(raw('? in (?)', ref('model2.id_col'), Model1.query().select('id')))
-              .whereNot('model2.id_col', 1)
-              .orWhereNot('model2.id_col', 2)
-              .whereRaw('model2.id_col is null')
-              .orWhereRaw('model2.id_col is null')
-              .whereExists(Model2.query())
-              .orWhereExists(Model2.query())
-              .whereNotExists(Model2.query())
-              .orWhereNotExists(Model2.query())
-              .orWhereIn('model2.id_col', [1, 2, 3])
-              .whereNotIn('model2.id_col', [1, 2, 3])
-              .orWhereNotIn('model2.id_col', [1, 2, 3])
-              .whereNull('model2.id_col')
-              .orWhereNull('model2.id_col')
-              .orWhereNotNull('model2.id_col')
-              .andWhereBetween('model2.id_col', [0, 1])
-              .whereNotBetween('model2.id_col', [0, 1])
-              .andWhereNotBetween('model2.id_col', [0, 1])
-              .orWhereBetween('model2.id_col', [0, 1])
-              .orWhereNotBetween('model2.id_col', [0, 1])
-              .orderByRaw('model2.id_col')
-              .into('model2')
-              .table('model2')
-              .joinRaw('inner join model2 as m1 on m1.model2_prop2 = 1')
-              .leftOuterJoin('model2 as m2', join =>
-                join
-                  .onBetween('m2.model2_prop2', [1, 2])
-                  .onNotBetween('m2.model2_prop2', [1, 2])
-                  .orOnBetween('m2.model2_prop2', [1, 2])
-                  .orOnNotBetween('m2.model2_prop2', [1, 2])
-                  .onIn('m2.model2_prop2', [1, 2])
-                  .onNotIn('m2.model2_prop2', [1, 2])
-                  .orOnIn('m2.model2_prop2', [1, 2])
-                  .andOnIn('m2.model2_prop2', [1, 2])
-                  .orOnNotIn('m2.model2_prop2', [1, 2])
-                  .onNull('m2.model2_prop2')
-                  .orOnNull('m2.model2_prop2')
-                  .onNotNull('m2.model2_prop2')
-                  .orOnNotNull('m2.model2_prop2')
-                  .onExists(Model2.query())
-                  .orOnExists(Model2.query())
-                  .onNotExists(Model2.query())
-                  .orOnNotExists(Model2.query())
-                  .andOnExists(Model2.query())
-                  .andOnNotExists(Model2.query())
-                  .andOnBetween('m2.model2_prop2', [1, 2])
-                  .andOnNotBetween('m2.model2_prop2', [1, 2])
-                  .andOn('m2.model2_prop2', 1)
-                  .orOnNotIn('m2.model2_prop2', [1, 2])
-                  .andOnNotIn('m2.model2_prop2', [1, 2])
-                  .andOnNull('m2.model2_prop2')
-                  .andOnNotNull('m2.model2_prop2')
-              )
-              .rightJoin('model2 as m3', 'm3.model2_prop2', 'm1.model2_prop2')
-              .rightOuterJoin('model2 as m4', 'm4.model2_prop2', 'm1.model2_prop2')
-              .fullOuterJoin('model2 as m6', 'm6.model2_prop2', 'm1.model2_prop2')
-              .crossJoin('model2 as m7')
-              .whereWrapped('model2.id_col < 10');
-          });
-        }
-
         it('.throwIfNotFound() with empty result', done => {
           Model1.query()
             .where('model1Prop1', 'There is no value like me')
@@ -851,6 +786,108 @@ module.exports = session => {
               ]);
             });
         });
+
+        if (session.isPostgres()) {
+          it('timeout should throw a TimeOutError', done => {
+            const knexQuery = Model1.query()
+              .timeout(50)
+              .build();
+
+            // Now the tricky part. We add `pg_sleep` as another source table so that the query
+            // takes a long time.
+            knexQuery.from({
+              sleep: session.knex.raw('pg_sleep(0.1)'),
+              Model1: 'Model1'
+            });
+
+            knexQuery
+              .then(() => done(new Error('should not get here')))
+              .catch(err => {
+                expect(err).to.be.a(TimeoutError);
+                done();
+              })
+              .catch(done);
+          });
+
+          it('smoke test for various methods', () => {
+            // This test doesn't actually test that the methods work. Knex has tests
+            // for these. This is a smoke test in case of typos and such.
+            return Model2.query()
+              .with('wm1', builder =>
+                builder
+                  .insert({ a: 1 })
+                  .update({ a: 2 })
+                  .delete()
+                  .del()
+                  .table('model2')
+                  .clear(QueryBuilderOperation)
+                  .select('*')
+                  .from('model2')
+              )
+              .clearSelect()
+              .clearWhere()
+              .columns('model2.model2_prop2')
+              .where(raw('? = ?', ref('model2.id_col'), ref('model2.model2_prop2')))
+              .where(raw('? in (?)', ref('model2.id_col'), Model1.query().select('id')))
+              .whereNot('model2.id_col', 1)
+              .orWhereNot('model2.id_col', 2)
+              .whereRaw('model2.id_col is null')
+              .orWhereRaw('model2.id_col is null')
+              .whereExists(Model2.query())
+              .orWhereExists(Model2.query())
+              .whereNotExists(Model2.query())
+              .orWhereNotExists(Model2.query())
+              .orWhereIn('model2.id_col', [1, 2, 3])
+              .whereNotIn('model2.id_col', [1, 2, 3])
+              .orWhereNotIn('model2.id_col', [1, 2, 3])
+              .whereNull('model2.id_col')
+              .orWhereNull('model2.id_col')
+              .orWhereNotNull('model2.id_col')
+              .andWhereBetween('model2.id_col', [0, 1])
+              .whereNotBetween('model2.id_col', [0, 1])
+              .andWhereNotBetween('model2.id_col', [0, 1])
+              .orWhereBetween('model2.id_col', [0, 1])
+              .orWhereNotBetween('model2.id_col', [0, 1])
+              .orderByRaw('model2.id_col')
+              .into('model2')
+              .table('model2')
+              .joinRaw('inner join model2 as m1 on m1.model2_prop2 = 1')
+              .leftOuterJoin('model2 as m2', join =>
+                join
+                  .onBetween('m2.model2_prop2', [1, 2])
+                  .onNotBetween('m2.model2_prop2', [1, 2])
+                  .orOnBetween('m2.model2_prop2', [1, 2])
+                  .orOnNotBetween('m2.model2_prop2', [1, 2])
+                  .onIn('m2.model2_prop2', [1, 2])
+                  .onNotIn('m2.model2_prop2', [1, 2])
+                  .orOnIn('m2.model2_prop2', [1, 2])
+                  .andOnIn('m2.model2_prop2', [1, 2])
+                  .orOnNotIn('m2.model2_prop2', [1, 2])
+                  .onNull('m2.model2_prop2')
+                  .orOnNull('m2.model2_prop2')
+                  .onNotNull('m2.model2_prop2')
+                  .orOnNotNull('m2.model2_prop2')
+                  .onExists(Model2.query())
+                  .orOnExists(Model2.query())
+                  .onNotExists(Model2.query())
+                  .orOnNotExists(Model2.query())
+                  .andOnExists(Model2.query())
+                  .andOnNotExists(Model2.query())
+                  .andOnBetween('m2.model2_prop2', [1, 2])
+                  .andOnNotBetween('m2.model2_prop2', [1, 2])
+                  .andOn('m2.model2_prop2', 1)
+                  .orOnNotIn('m2.model2_prop2', [1, 2])
+                  .andOnNotIn('m2.model2_prop2', [1, 2])
+                  .andOnNull('m2.model2_prop2')
+                  .andOnNotNull('m2.model2_prop2')
+              )
+              .rightJoin('model2 as m3', 'm3.model2_prop2', 'm1.model2_prop2')
+              .rightOuterJoin('model2 as m4', 'm4.model2_prop2', 'm1.model2_prop2')
+              .fullOuterJoin('model2 as m6', 'm6.model2_prop2', 'm1.model2_prop2')
+              .crossJoin('model2 as m7')
+              .whereWrapped('model2.id_col < 10');
+          });
+        }
       });
     });
 
@@ -859,6 +896,10 @@ module.exports = session => {
         return session.populate([
           {
             id: 1,
+
+            model1Relation1: {
+              id: 3
+            },
 
             model1Relation2: [
               {
@@ -913,7 +954,8 @@ module.exports = session => {
           .then(res => {
             expect(res).to.eql([
               { id: 1, rel2Count: '2', rel3Count: '1', $afterGetCalled: 1 },
-              { id: 2, rel2Count: '1', rel3Count: '2', $afterGetCalled: 1 }
+              { id: 2, rel2Count: '1', rel3Count: '2', $afterGetCalled: 1 },
+              { id: 3, rel2Count: '0', rel3Count: '0', $afterGetCalled: 1 }
             ]);
           });
       });
@@ -936,7 +978,46 @@ module.exports = session => {
           .then(res => {
             expect(res).to.eql([
               { id: 1, rel2Count: '2', rel3Count: '1', $afterGetCalled: 1 },
-              { id: 2, rel2Count: '1', rel3Count: '2', $afterGetCalled: 1 }
+              { id: 2, rel2Count: '1', rel3Count: '2', $afterGetCalled: 1 },
+              { id: 3, rel2Count: '0', rel3Count: '0', $afterGetCalled: 1 }
+            ]);
+          });
+      });
+
+      it('self referential relations should work', () => {
+        return Model1.query()
+          .select([
+            'id',
+            Model1.relatedQuery('model1Relation1')
+              .select('id')
+              .as('relId')
+          ])
+          .orderBy('id')
+          .then(res => {
+            expect(res).to.eql([
+              { id: 1, relId: 3, $afterGetCalled: 1 },
+              { id: 2, relId: null, $afterGetCalled: 1 },
+              { id: 3, relId: null, $afterGetCalled: 1 }
+            ]);
+          });
+      });
+
+      it('should work with subquery alias', () => {
+        return Model1.query()
+          .select([
+            'id',
+            Model1.relatedQuery('model1Relation1')
+              .alias('a2')
+              .select('a2.id')
+              .as('relId')
+          ])
+          .alias('a1')
+          .orderBy('id')
+          .then(res => {
+            expect(res).to.eql([
+              { id: 1, relId: 3, $afterGetCalled: 1 },
+              { id: 2, relId: null, $afterGetCalled: 1 },
+              { id: 3, relId: null, $afterGetCalled: 1 }
             ]);
           });
       });
@@ -1183,7 +1264,7 @@ module.exports = session => {
           });
       });
 
-      it('should be able to specify aliases`', () => {
+      it('should be able to specify aliases', () => {
         return Model1.query()
           .select([
             'Model1.id',
@@ -1196,6 +1277,73 @@ module.exports = session => {
               model1Relation1: 'm1r1',
               model1Relation2: 'm1r2',
               model2Relation1: 'm2r1'
+            }
+          })
+          .where('m1r2:m2r1.model1Prop1', 'hello 6')
+          .first()
+          .then(model => {
+            expect(model.toJSON()).to.eql({
+              id: 1,
+              model2Prop1: 'hejsan 2',
+              foo: 'hello 6',
+              x: 3
+            });
+          });
+      });
+
+      it('should be able to specify aliases in the relation expression (string)', () => {
+        return Model1.query()
+          .select([
+            'Model1.id',
+            'm1r1:m1r1.id as x',
+            'm1r2:m2r1.model1Prop1 as foo',
+            'm1r2.model2_prop1 as model2Prop1'
+          ])
+          .leftJoinRelation(
+            `[
+            model1Relation1 as m1r1.[
+              model1Relation1 as m1r1
+            ],
+            model1Relation2 as m1r2.[
+              model2Relation1 as m2r1
+            ]
+          ]`
+          )
+          .where('m1r2:m2r1.model1Prop1', 'hello 6')
+          .first()
+          .then(model => {
+            expect(model.toJSON()).to.eql({
+              id: 1,
+              model2Prop1: 'hejsan 2',
+              foo: 'hello 6',
+              x: 3
+            });
+          });
+      });
+
+      it('should be able to specify aliases in the relation expression (object)', () => {
+        return Model1.query()
+          .select([
+            'Model1.id',
+            'm1r1:m1r1.id as x',
+            'm1r2:m2r1.model1Prop1 as foo',
+            'm1r2.model2_prop1 as model2Prop1'
+          ])
+          .leftJoinRelation({
+            m1r1: {
+              $relation: 'model1Relation1',
+
+              m1r1: {
+                $relation: 'model1Relation1'
+              }
+            },
+
+            m1r2: {
+              $relation: 'model1Relation2',
+
+              m2r1: {
+                $relation: 'model2Relation1'
+              }
             }
           })
           .where('m1r2:m2r1.model1Prop1', 'hello 6')
@@ -1349,6 +1497,7 @@ module.exports = session => {
             .joinRelation('model1Relation2(rawSelect)')
             .select('rawSelect')
             .findById(1)
+            .where('model1Relation2.id_col', 2)
             .then(model => {
               expect(model.rawSelect).to.equal('hejsan 2 hejsan 2');
             });
@@ -1398,6 +1547,44 @@ module.exports = session => {
             expect(model).to.be.a(Model1);
             expect(model.model1Prop1).to.equal('hello 1');
           });
+      });
+
+      it('should throw if the id is undefined', done => {
+        Model1.query()
+          .then(models => {
+            expect(_.map(models, 'model1Prop1').sort()).to.eql(['hello 1', 'hello 2']);
+            delete models[0].id;
+            return models[0].$query();
+          })
+          .then(() => {
+            done(new Error('should not get here'));
+          })
+          .catch(err => {
+            expect(err.message).to.equal(
+              `one of the identifier columns [id] is null or undefined. Have you specified the correct identifier column for the model 'Model1' using the 'idColumn' property?`
+            );
+            done();
+          })
+          .catch(done);
+      });
+
+      it('should throw if the id is null', done => {
+        Model1.query()
+          .then(models => {
+            expect(_.map(models, 'model1Prop1').sort()).to.eql(['hello 1', 'hello 2']);
+            models[0].id = null;
+            return models[0].$query();
+          })
+          .then(() => {
+            done(new Error('should not get here'));
+          })
+          .catch(err => {
+            expect(err.message).to.equal(
+              `one of the identifier columns [id] is null or undefined. Have you specified the correct identifier column for the model 'Model1' using the 'idColumn' property?`
+            );
+            done();
+          })
+          .catch(done);
       });
     });
 

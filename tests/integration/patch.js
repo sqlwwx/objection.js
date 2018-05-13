@@ -5,6 +5,7 @@ const Promise = require('bluebird');
 const inheritModel = require('../../lib/model/inheritModel').inheritModel;
 const expectPartEql = require('./../../testUtils/testUtils').expectPartialEqual;
 const ValidationError = require('../../').ValidationError;
+const Model = require('../../').Model;
 const isPostgres = require('../../lib/utils/knexUtils').isPostgres;
 const isSqlite = require('../../lib/utils/knexUtils').isSqlite;
 const mockKnexFactory = require('../../testUtils/mockKnex');
@@ -275,6 +276,35 @@ module.exports = session => {
             done();
           })
           .catch(done);
+      });
+
+      it('should be able to use objection.raw in hooks', () => {
+        class Test extends Model {
+          static get tableName() {
+            return 'Model1';
+          }
+
+          $beforeUpdate(opt, ctx) {
+            this.model1Prop2 = raw(`100 + 200`);
+          }
+        }
+
+        return Test.query(session.knex)
+          .findById(2)
+          .patch({
+            model1Prop1: 'updated'
+          })
+          .then(() => {
+            return Test.query(session.knex).findById(2);
+          })
+          .then(model => {
+            expect(model).to.eql({
+              id: 2,
+              model1Id: null,
+              model1Prop1: 'updated',
+              model1Prop2: 300
+            });
+          });
       });
     });
 
@@ -607,6 +637,42 @@ module.exports = session => {
             expectPartEql(rows[0], { id: 1, model1Prop1: 'updated text' });
             expectPartEql(rows[1], { id: 2, model1Prop1: 'hello 2' });
           });
+      });
+
+      it('should throw if the id is undefined', done => {
+        let model = Model1.fromJson({ model1Prop2: 1 });
+
+        model
+          .$query()
+          .patch({ model1Prop1: 'updated text', undefinedShouldBeIgnored: undefined })
+          .then(() => {
+            done(new Error('should not get here'));
+          })
+          .catch(err => {
+            expect(err.message).to.equal(
+              `one of the identifier columns [id] is null or undefined. Have you specified the correct identifier column for the model 'Model1' using the 'idColumn' property?`
+            );
+            done();
+          })
+          .catch(done);
+      });
+
+      it('should throw if the id is null', done => {
+        let model = Model1.fromJson({ id: null });
+
+        model
+          .$query()
+          .patch({ model1Prop1: 'updated text', undefinedShouldBeIgnored: undefined })
+          .then(() => {
+            done(new Error('should not get here'));
+          })
+          .catch(err => {
+            expect(err.message).to.equal(
+              `one of the identifier columns [id] is null or undefined. Have you specified the correct identifier column for the model 'Model1' using the 'idColumn' property?`
+            );
+            done();
+          })
+          .catch(done);
       });
     });
 

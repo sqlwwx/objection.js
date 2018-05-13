@@ -164,8 +164,16 @@ async () => {
 
 // instance methods:
 async () => {
-  takesPerson(await new Person().$loadRelated('movies'));
-  takesPerson(await new Person().$query());
+  const person = new Person();
+
+  takesPerson(await person.$loadRelated('movies'));
+  takesPerson(await person.$query());
+  takesPerson(
+    await person.$query().patchAndFetch({
+      firstName: 'Test',
+      lastName: 'Name'
+    })
+  );
 };
 
 class Movie extends objection.Model {
@@ -205,6 +213,9 @@ class Movie extends objection.Model {
     }
   };
 }
+
+const cols1: string[] = Person.tableMetadata().columns;
+const cols2: Promise<objection.TableMetadata> = Person.fetchTableMetadata();
 
 function takesMovie(m: Movie) {
   m.title = '';
@@ -282,9 +293,14 @@ const appendRelatedPerson: Person = examplePerson.$appendRelated('pets', [
 ]);
 
 // static methods from Model should return the subclass type
+const personQB: objection.QueryBuilderYieldingOne<Person> = Person.loadRelated(
+  new Person(),
+  'movies'
+);
+const peopleQB: objection.QueryBuilder<Person> = Person.loadRelated([new Person()], 'movies');
 
-const person: Promise<Person> = Person.loadRelated(new Person(), 'movies');
-const people: Promise<Person[]> = Person.loadRelated([new Person()], 'movies');
+const person: Promise<Person> = personQB;
+const people: Promise<Person[]> = peopleQB;
 
 class Actor {
   canAct?: boolean;
@@ -428,6 +444,12 @@ const rowsEager: Promise<Person[]> = Person.query()
   .eagerAlgorithm(Person.NaiveEagerAlgorithm)
   .eager('foo.bar');
 
+const rowsEager2: Promise<Person[]> = Person.query().eager({
+  foo: {
+    bar: true
+  }
+});
+
 const children: Promise<Person[]> = Person.query()
   .skipUndefined()
   .allowEager('[pets, parent, children.[pets, movies.actors], movies.actors.pets]')
@@ -531,6 +553,12 @@ qb = qb.mergeContext({
 });
 
 qb = qb.runBefore(qbcb);
+qb = qb.onBuild(qbcb);
+qb = qb.onBuildKnex((knexBuilder: knex.QueryBuilder, builder: objection.QueryBuilder<Person>) => {
+  if (builder.hasWheres()) {
+    knexBuilder.where('foo', 'bar');
+  }
+});
 
 qb = qb.reject('fail');
 qb = qb.resolve('success');

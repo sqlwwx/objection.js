@@ -370,6 +370,53 @@ module.exports = session => {
               });
             });
         });
+
+        it('should be able to patch multiple fields inside the same json object', () => {
+          return BoundModel.query()
+            .patch({
+              'jsonObject:attr1': 'foo',
+              'jsonObject:attr2': 'bar'
+            })
+            .where('id', 2)
+            .then(() =>
+              BoundModel.query()
+                .findById(2)
+                .select('jsonObject')
+            )
+            .then(result => {
+              expect(result).to.eql({
+                jsonObject: {
+                  attr: 2,
+                  attr1: 'foo',
+                  attr2: 'bar'
+                }
+              });
+            });
+        });
+
+        it('should be able to patch fields using $query().patch()', () => {
+          return BoundModel.query()
+            .findById(1)
+            .then(model => {
+              return model.$query().patch({
+                name: 'updated name',
+                'jsonObject:attr': 'bar'
+              });
+            })
+            .then(() => {
+              return BoundModel.query()
+                .findById(1)
+                .select('name', 'jsonObject');
+            })
+            .then(result => {
+              expect(result).to.eql({
+                name: 'updated name',
+                jsonObject: {
+                  attr: 'bar'
+                }
+              });
+            });
+        });
       });
     });
 

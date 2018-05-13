@@ -57,7 +57,9 @@ declare namespace Objection {
     castBool(): this;
     castJson(): this;
     castArray(): this;
+    asArray(): this;
     castType(sqlType: string): this;
+    castTo(sqlType: string): this;
     as(alias: string): this;
   }
 
@@ -139,6 +141,11 @@ declare namespace Objection {
     shallow?: boolean;
   }
 
+  export class NotFoundError extends Error {
+    statusCode: number;
+    data?: any;
+  }
+
   export type ValidationErrorType =
     | 'ModelValidation'
     | 'RelationExpression'
@@ -189,8 +196,8 @@ declare namespace Objection {
   export interface RelationThrough {
     from: string | Reference | (string | Reference)[];
     to: string | Reference | (string | Reference)[];
-    modelClass?: string | typeof Model;
-    extra?: string[];
+    modelClass?: ModelClass<any> | string;
+    extra?: string[] | object;
   }
 
   export interface RelationMapping {
@@ -232,6 +239,20 @@ declare namespace Objection {
     [key: string]: any;
   }
 
+  export interface TableMetadata {
+    columns: Array<string>;
+  }
+
+  export interface TableMetadataOptions {
+    table: string;
+  }
+
+  export interface FetchTableMetadataOptions {
+    knex?: knex;
+    force?: boolean;
+    table?: string;
+  }
+
   /**
    * @see http://vincit.github.io/objection.js/#fieldexpression
    */
@@ -240,7 +261,7 @@ declare namespace Objection {
   /**
    * @see http://vincit.github.io/objection.js/#relationexpression
    */
-  type RelationExpression = string;
+  type RelationExpression = string | object;
 
   interface FilterFunction<QM extends Model> {
     (queryBuilder: QueryBuilder<QM, QM[]>): void;
@@ -305,7 +326,7 @@ declare namespace Objection {
 
   interface ModifyEager<QM1 extends Model, RM1, RV1> {
     <QM2 extends Model>(
-      relationExpression: string | RelationExpression,
+      relationExpression: RelationExpression,
       modifier: (builder: QueryBuilder<QM2, QM2[]>) => void
     ): QueryBuilder<QM1, RM1, RV1>;
   }
@@ -324,6 +345,10 @@ declare namespace Objection {
 
   interface Properties {
     [propertyName: string]: boolean;
+  }
+
+  interface TimeoutOptions {
+    cancel: boolean;
   }
 
   /**
@@ -370,6 +395,7 @@ declare namespace Objection {
     bindTransaction(transaction: Transaction): this;
     createValidator(): Validator;
     createValidationError(args: CreateValidationErrorArgs): Error;
+    createNotFoundError(): Error;
 
     fromJson(json: object, opt?: ModelOptions): M;
     fromDatabaseJson(row: object): M;
@@ -382,14 +408,14 @@ declare namespace Objection {
       expression: RelationExpression,
       filters?: Filters<M>,
       trxOrKnex?: Transaction | knex
-    ): Promise<M[]>;
+    ): QueryBuilder<M>;
 
     loadRelated(
       model: M,
       expression: RelationExpression,
       filters?: Filters<M>,
       trxOrKnex?: Transaction | knex
-    ): Promise<M>;
+    ): QueryBuilderYieldingOne<M>;
 
     traverse(
       filterConstructor: typeof Model,
@@ -397,6 +423,8 @@ declare namespace Objection {
       traverser: TraverserFunction
     ): void;
     traverse(models: Model | Model[], traverser: TraverserFunction): void;
+    tableMetadata(opt?: TableMetadataOptions): TableMetadata;
+    fetchTableMetadata(opt?: FetchTableMetadataOptions): Promise<TableMetadata>;
   }
 
   // TS 2.5 doesn't support interfaces with static methods or fields, so
@@ -446,6 +474,7 @@ declare namespace Objection {
     static bindTransaction<M>(this: M, transaction: Transaction): M;
     static createValidator(): Validator;
     static createValidationError(args: CreateValidationErrorArgs): Error;
+    static createNotFoundError(): Error;
 
     // fromJson and fromDatabaseJson both return an instance of Model, not a Model class:
     static fromJson<M>(this: Constructor<M>, json: Pojo, opt?: ModelOptions): M;
@@ -454,14 +483,13 @@ declare namespace Objection {
     static omitImpl(f: (obj: object, prop: string) => void): void;
 
     // loadRelated is overloaded to support both Model and Model[] variants:
-    
     static loadRelated<QM extends Model>(
       this: Constructor<QM>,
       models: QM[],
       expression: RelationExpression,
       filters?: Filters<QM>,
       trxOrKnex?: Transaction | knex
-    ): Promise<QM[]>;
+    ): QueryBuilder<QM>;
 
     static loadRelated<QM extends Model>(
       this: Constructor<QM>,
@@ -469,7 +497,7 @@ declare namespace Objection {
       expression: RelationExpression,
       filters?: Filters<QM>,
       trxOrKnex?: Transaction | knex
-    ): Promise<QM>;
+    ): QueryBuilderYieldingOne<QM>;
 
     static traverse(
       filterConstructor: typeof Model,
@@ -478,6 +506,8 @@ declare namespace Objection {
     ): void;
     static traverse(models: Model | Model[], traverser: TraverserFunction): void;
 
+    static tableMetadata(opt?: TableMetadataOptions): TableMetadata;
+    static fetchTableMetadata(opt?: FetchTableMetadataOptions): Promise<TableMetadata>;
     // Implementation note: At least as of TypeScript 2.7, subclasses of
     // methods that return `this` are not compatible with their superclass.
     // For example, `class Movie extends Model` could not be passed as a
@@ -516,9 +546,6 @@ declare namespace Objection {
     $pick<T>(this: T, keys: string | string[] | Properties): T;
     $clone<T>(this: T, opt?: CloneOptions): T;
 
-    /**
-     * AKA `reload` in ActiveRecord parlance
-     */
     $query<QM extends Model>(this: QM, trxOrKnex?: Transaction | knex): QueryBuilder<QM, QM>;
 
     /**
@@ -580,14 +607,16 @@ declare namespace Objection {
     throwIfNotFound(): QueryBuilder<QM, RM>;
   }
 
+  export interface QueryBuilderYieldingOne<QM extends Model> extends QueryBuilder<QM, QM, QM> {}
+
   export interface QueryBuilderYieldingOneOrNone<QM extends Model>
     extends QueryBuilder<QM, QM, QM | undefined> {}
 
   export interface QueryBuilderYieldingCount<QM extends Model, RM = QM[]>
     extends QueryBuilderBase<QM, RM, number>,
       Executable<number> {
-        throwIfNotFound(): this;
-      }
+    throwIfNotFound(): this;
+  }
 
   interface Insert<QM extends Model> {
     (modelsOrObjects?: Partial<QM>[]): QueryBuilder<QM, QM[]>;
@@ -614,6 +643,8 @@ declare namespace Objection {
   interface QueryBuilderBase<QM extends Model, RM, RV> extends QueryInterface<QM, RM, RV> {
     modify(func: (builder: this) => void): this;
     modify(namedFilter: string): this;
+
+    applyFilter(...namedFilters: string[]): this;
 
     findById(id: Id): QueryBuilderYieldingOneOrNone<QM>;
     findById(idOrIds: IdOrIds): this;
@@ -645,7 +676,7 @@ declare namespace Objection {
      * @return a Promise of the number of patched rows
      */
     patch(modelOrObject: Partial<QM>): QueryBuilderYieldingCount<QM, RM>;
-    patchAndFetchById(id: Id, modelOrObject: Partial<QM>): QueryBuilder<QM, QM>;
+    patchAndFetchById(idOrIds: IdOrIds, modelOrObject: Partial<QM>): QueryBuilder<QM, QM>;
     patchAndFetch(modelOrObject: Partial<QM>): QueryBuilder<QM, QM>;
 
     upsertGraph: Upsert<QM>;
@@ -748,9 +779,11 @@ declare namespace Objection {
     runBefore(fn: (result: any, builder: QueryBuilder<QM, any>) => any): this;
     runAfter(fn: (result: any, builder: QueryBuilder<QM, any>) => any): this;
     onBuild(fn: (builder: this) => void): this;
+    onBuildKnex(fn: (knexBuilder: knex.QueryBuilder, builder: this) => void): this;
     onError(fn: (error: Error, builder: this) => any): this;
 
     eagerAlgorithm(algo: EagerAlgorithm): this;
+    eagerOptions(opts: EagerOptions): this;
 
     eager(relationExpression: RelationExpression, filters?: FilterExpression<QM>): this;
     mergeEager(relationExpression: RelationExpression, filters?: FilterExpression<QM>): this;
@@ -811,6 +844,8 @@ declare namespace Objection {
     omit(properties: string[]): this;
 
     returning(columns: string | string[]): QueryBuilder<QM, RM>;
+
+    timeout(ms: number, options?: TimeoutOptions): this;
   }
 
   export interface transaction<T> {
