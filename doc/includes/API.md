@@ -1145,6 +1145,8 @@ Relates an existing model to another model.
 This method doesn't create a new instance but only updates the foreign keys and in
 the case of many-to-many relation, creates a join row to the join table.
 
+It does not affect preexisting relations.
+
 On Postgres multiple models can be related by giving an array of identifiers.
 
 ##### Arguments
@@ -1224,6 +1226,53 @@ alias|string|Table alias for the query.
 Type|Description
 ----|-----------------------------
 [`QueryBuilder`](#querybuilder)|`this` query builder for chaining.
+
+
+
+
+#### aliasFor
+
+```js
+const builder = queryBuilder.aliasFor(tableNameOrModelClass, alias);
+```
+
+TODO: Doesn't work with joinRelation
+```js
+// This qurey joinRelation to join a many-to-many relation which also joins
+// the join table `persons_movies`. We specify that the `persons_movies` table
+// should be called `pm` instead of the default `movies_join`.
+await person
+  .query()
+  .aliasFor('persons_movies', 'pm')
+  .joinRelation('movies')
+  .where('pm.someProp', 100)
+```
+
+> Model class can be used instead of table name
+
+```js
+await Person
+  .query()
+  .aliasFor(Movie, 'm')
+  .joinRelation('movies')
+  .where('m.name', 'The Room')
+```
+
+Give an alias for any table in the query.
+
+##### Arguments
+
+Argument|Type|Description
+--------|----|--------------------
+tableNameOrModelClass|strig&#124;ModelClass|The table to alias.
+alias|string|The alias.
+
+##### Return value
+
+Type|Description
+----|-----------------------------
+[`QueryBuilder`](#querybuilder)|`this` query builder for chaining.
+
 
 
 
@@ -8320,7 +8369,7 @@ Property|Type|Description
 relate|boolean&#124;string[]|If true, relations are related instead of inserted. Relate functionality can be enabled for a subset of relations of the graph by providing a list of relation expressions. See the examples [here](#graph-upserts).
 unrelate|boolean&#124;string[]|If true, relations are unrelated instead of deleted. Unrelate functionality can be enabled for a subset of relations of the graph by providing a list of relation expressions. See the examples [here](#graph-upserts).
 insertMissing|boolean&#124;string[]|If true, models that have identifiers _and_ are not found, are inserted. By default this is false and an error is thrown. This functionality can be enabled for a subset of relations of the graph by providing a list of relation expressions. See the examples [here](#graph-upserts).
-update|boolean&#124;string[]|If true, update operations are performaed instead of patch when altering existing models, affecting the way the data is validated. With update operations, all required fields need to be present in the data provided. This functionality can be enabled for a subset of relations of the graph by providing a list of relation expressions. See the examples [here](#graph-upserts).
+update|boolean&#124;string[]|If true, update operations are performed instead of patch when altering existing models, affecting the way the data is validated. With update operations, all required fields need to be present in the data provided. This functionality can be enabled for a subset of relations of the graph by providing a list of relation expressions. See the examples [here](#graph-upserts).
 noInsert|boolean&#124;string[]|If true, no inserts are performed. Inserts can be disabled for a subset of relations of the graph by providing a list of relation expressions. See the examples [here](#graph-upserts).
 noUpdate|boolean&#124;string[]|If true, no updates are performed. Updates can be disabled for a subset of relations of the graph by providing a list of relation expressions. See the examples [here](#graph-upserts).
 noDelete|boolean&#124;string[]|If true, no deletes are performed. Deletes can be disabled for a subset of relations of the graph by providing a list of relation expressions. See the examples [here](#graph-upserts).
