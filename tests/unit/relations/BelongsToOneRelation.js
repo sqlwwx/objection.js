@@ -36,20 +36,20 @@ describe('BelongsToOneRelation', () => {
     mockKnexQueryResults = [];
     executedQueries = [];
 
-    OwnerModel = class extends Model {
+    OwnerModel = class OwnerModel extends Model {
       static get tableName() {
         return 'OwnerModel';
       }
     };
 
-    RelatedModel = class extends Model {
+    RelatedModel = class RelatedModel extends Model {
       static get tableName() {
         return 'RelatedModel';
       }
 
-      static get namedFilters() {
+      static get modifiers() {
         return {
-          namedFilter: builder => builder.where('filteredProperty', true)
+          modifier: builder => builder.where('filteredProperty', true)
         };
       }
     };
@@ -244,8 +244,8 @@ describe('BelongsToOneRelation', () => {
       });
     });
 
-    it('should support named filters', () => {
-      createModifiedRelation('namedFilter');
+    it('should support modifiers', () => {
+      createModifiedRelation('modifier');
 
       let owner = OwnerModel.fromJson({ id: 666, relatedId: 1 });
       let expectedResult = [{ id: 1, a: 10, rid: 1 }];
@@ -940,7 +940,7 @@ describe('BelongsToOneRelation', () => {
       });
     });
 
-    it('should throw is a `through` object is given', () => {
+    it('should throw if a `through` object is given', () => {
       expect(() => {
         relation = new BelongsToOneRelation('nameOfOurRelation', OwnerModel);
 

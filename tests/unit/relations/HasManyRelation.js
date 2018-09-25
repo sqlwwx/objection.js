@@ -36,20 +36,20 @@ describe('HasManyRelation', () => {
     mockKnexQueryResults = [];
     executedQueries = [];
 
-    OwnerModel = class extends Model {
+    OwnerModel = class OwnerModel extends Model {
       static get tableName() {
         return 'OwnerModel';
       }
     };
 
-    RelatedModel = class extends Model {
+    RelatedModel = class RelatedModel extends Model {
       static get tableName() {
         return 'RelatedModel';
       }
 
-      static get namedFilters() {
+      static get modifiers() {
         return {
-          namedFilter: builder => builder.where('filteredProperty', true)
+          modifier: builder => builder.where('filteredProperty', true)
         };
       }
     };
@@ -231,7 +231,7 @@ describe('HasManyRelation', () => {
       });
     });
 
-    it('should apply the modifier', () => {
+    it('should apply a modifier object', () => {
       createModifiedRelation({ someColumn: 'foo' });
 
       let owner = OwnerModel.fromJson({ oid: 666 });
@@ -262,8 +262,39 @@ describe('HasManyRelation', () => {
       });
     });
 
-    it('should support named filters', () => {
-      createModifiedRelation('namedFilter');
+    it('should apply a modifier function', () => {
+      createModifiedRelation(builder => builder.where('someColumn', 'foo'));
+
+      let owner = OwnerModel.fromJson({ oid: 666 });
+      let expectedResult = [{ a: 1, ownerId: 666 }, { a: 2, ownerId: 666 }];
+
+      mockKnexQueryResults = [expectedResult];
+
+      let builder = QueryBuilder.forClass(RelatedModel)
+        .where('name', 'Teppo')
+        .orWhere('age', '>', 60)
+        .findOperationFactory(builder => {
+          return relation.find(builder, [owner]);
+        });
+
+      return builder.then(result => {
+        expect(result).to.have.length(2);
+        expect(result).to.eql(expectedResult);
+        expect(owner.nameOfOurRelation).to.eql(expectedResult);
+        expect(result[0]).to.be.a(RelatedModel);
+        expect(result[1]).to.be.a(RelatedModel);
+
+        expect(executedQueries).to.have.length(1);
+        expect(executedQueries[0]).to.equal(builder.toString());
+        expect(executedQueries[0]).to.equal(builder.toSql());
+        expect(executedQueries[0]).to.equal(
+          'select "RelatedModel".* from "RelatedModel" where "RelatedModel"."ownerId" in (666) and "someColumn" = \'foo\' and "name" = \'Teppo\' or "age" > 60'
+        );
+      });
+    });
+
+    it('should support model modifiers', () => {
+      createModifiedRelation('modifier');
 
       let owner = OwnerModel.fromJson({ oid: 666 });
       let expectedResult = [{ a: 1, ownerId: 666 }, { a: 2, ownerId: 666 }];

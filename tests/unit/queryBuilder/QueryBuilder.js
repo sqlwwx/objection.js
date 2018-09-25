@@ -116,46 +116,57 @@ describe('QueryBuilder', () => {
     expect(called).to.equal(true);
   });
 
-  it('modify() accept a list of strings and call the corresponding named filters', () => {
-    let builder = QueryBuilder.forClass(TestModel);
-    let aCalled = false;
-    let bCalled = false;
+  ['applyFilter', 'applyModifier', 'modify'].forEach(method => {
+    it(method + ' accept a list of strings and call the corresponding modifiers', () => {
+      const builder = QueryBuilder.forClass(TestModel);
 
-    TestModel.namedFilters = {
-      a(qb) {
-        aCalled = qb === builder;
-      },
+      let aCalled = false;
+      let bCalled = false;
 
-      b(qb) {
-        bCalled = qb === builder;
-      }
-    };
+      TestModel.modifiers = {
+        a(qb) {
+          aCalled = qb === builder;
+        },
 
-    builder.modify('a', 'b');
+        b(qb) {
+          bCalled = qb === builder;
+        },
 
-    expect(aCalled).to.equal(true);
-    expect(bCalled).to.equal(true);
-  });
+        c: 'a',
 
-  it('applyFilter() accept a list of strings and call the corresponding named filters', () => {
-    let builder = QueryBuilder.forClass(TestModel);
-    let aCalled = false;
-    let bCalled = false;
+        d: ['c', 'b']
+      };
 
-    TestModel.namedFilters = {
-      a(qb) {
-        aCalled = qb === builder;
-      },
+      aCalled = false;
+      bCalled = false;
+      builder[method]('a');
+      expect(aCalled).to.equal(true);
+      expect(bCalled).to.equal(false);
 
-      b(qb) {
-        bCalled = qb === builder;
-      }
-    };
+      aCalled = false;
+      bCalled = false;
+      builder[method]('b');
+      expect(aCalled).to.equal(false);
+      expect(bCalled).to.equal(true);
 
-    builder.applyFilter('a', 'b');
+      aCalled = false;
+      bCalled = false;
+      builder[method](['a', 'b']);
+      expect(aCalled).to.equal(true);
+      expect(bCalled).to.equal(true);
 
-    expect(aCalled).to.equal(true);
-    expect(bCalled).to.equal(true);
+      aCalled = false;
+      bCalled = false;
+      builder[method]([['a', [[['b']]]]]);
+      expect(aCalled).to.equal(true);
+      expect(bCalled).to.equal(true);
+
+      aCalled = false;
+      bCalled = false;
+      builder[method]('d');
+      expect(aCalled).to.equal(true);
+      expect(bCalled).to.equal(true);
+    });
   });
 
   it('should call the callback passed to .then after execution', done => {
@@ -686,7 +697,7 @@ describe('QueryBuilder', () => {
       .where('test', '<', 100)
       .update({ a: 1 });
 
-    query
+    return query
       .then(() => {
         expect(executedQueries).to.have.length(1);
         expect(query.toString()).to.equal(executedQueries[0]);
@@ -820,8 +831,9 @@ describe('QueryBuilder', () => {
       'whereNot',
       'orWhereNot',
       'whereRaw',
-      'whereWrapped',
+      'andWhereRaw',
       'orWhereRaw',
+      'whereWrapped',
       'whereExists',
       'orWhereExists',
       'whereNotExists',
@@ -1225,12 +1237,12 @@ describe('QueryBuilder', () => {
       .filterEager('a', _.noop);
 
     expect(builder._eagerExpression).to.be.a(RelationExpression);
-    expect(builder._eagerFiltersAtPath).to.have.length(1);
+    expect(builder._eagerModifiersAtPath).to.have.length(1);
 
     builder.clearEager();
 
     expect(builder._eagerExpression).to.equal(null);
-    expect(builder._eagerFiltersAtPath).to.have.length(0);
+    expect(builder._eagerModifiersAtPath).to.have.length(0);
   });
 
   it('clearReject() should clear remove explicit rejection', () => {

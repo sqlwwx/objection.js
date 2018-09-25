@@ -1028,7 +1028,7 @@ const people = await Person
   });
 ```
 
-> Relations can also be filtered using named filters like this:
+> Relations can also be filtered using modifier functions like this:
 
 ```js
 const people = await Person
@@ -1049,13 +1049,13 @@ console.log(people[0].children[0].pets[0].name);
 console.log(people[0].children[0].movies[0].id);
 ```
 
-> Reusable named filters can be defined for models using [`namedFilters`](#namedfilters)
+> Reusable modifiers can be defined for models using [`modifiers`](#modifiers)
 
 ```js
 // Person.js
 
 class Person extends Model {
-  static get namedFilters() {
+  static get modifiers() {
     return {
       orderByAge: (builder) => {
         builder.orderBy('age');
@@ -1067,7 +1067,7 @@ class Person extends Model {
 // Animal.js
 
 class Animal extends Model {
-  static get namedFilters() {
+  static get modifiers() {
     return {
       orderByName: (builder) => {
         builder.orderBy('name');
@@ -1803,7 +1803,7 @@ callback are actual copies of the models passed as arguments to `objection.trans
 query through any other object will __not__ be executed inside a transaction.
 
 Originally we advertised this way of doing transactions as a remedy to the transaction passing
-plaque but it has turned out to be pretty error-prone. This approach is handy for single inline
+plague but it has turned out to be pretty error-prone. This approach is handy for single inline
 functions that do a handful of operations, but becomes tricky when you have to call services
 and helper methods that also perform database queries. To get the helpers and service functions
 to participate in the transaction you need to pass around the bound copies of the model classes.
@@ -1841,7 +1841,7 @@ Objection.js makes it easy to store non-flat documents as table rows. All proper
 objects or arrays in the model's [`jsonSchema`](#jsonschema) are automatically converted to JSON strings in the database and
 back to objects when read from the database. The database columns for the object properties can be normal
 text columns. Postgresql has the `json` and `jsonb` data types that can be used instead for better performance
-and possibility to [write queries](http://www.postgresql.org/docs/9.4/static/functions-json.html) to the documents.
+and possibility to [write queries](http://www.postgresql.org/docs/9.4/static/functions-json.html) for the documents.
 If you don't want to use `jsonSchema` you can mark properties as objects using the [`jsonAttributes`](#jsonattributes)
 Model property.
 
@@ -1892,7 +1892,7 @@ try {
 ```
 
 [JSON schema](http://json-schema.org/) validation can be enabled by setting the [`jsonSchema`](#jsonschema) property
-of a model class. The validation is ran each time a [`Model`](#model) instance is created.
+of a model class. The validation is run each time a [`Model`](#model) instance is created.
 
 You rarely need to call [`$validate`](#_s_validate) method explicitly, but you can do it when needed. If validation fails a
 [`ValidationError`](#validationerror) will be thrown. Since we use Promises, this usually means that a promise will be rejected
@@ -1921,6 +1921,7 @@ create a pull request or an issue to get it added to this list.
 
  * [objection-filter](https://github.com/tandg-digital/objection-filter) - API filtering on data and related models
  * [objection-graphql](https://github.com/vincit/objection-graphql) - Automatically generates rich graphql schema for objection models
+ * [objection-transactional-tests](https://github.com/smartlyio/objection-transactional-tests) - Wrap Jest or Mocha test cases in transactions
 
 ## Plugin development best practices
 

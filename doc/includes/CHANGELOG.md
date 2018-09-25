@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.3.0
+
+### What's new
+
+  * Use `objection.raw` instead of `knex.raw` in `Model.raw`. [#1077](https://github.com/Vincit/objection.js/issues/1077)
+  * Allow modifiers (namedFilters) to be used in `modifyEager` too.
+  * Add `underscoreBeforeDigits` option for snake case converters. [#1025](https://github.com/Vincit/objection.js/issues/1025)
+  * fix [#1074](https://github.com/Vincit/objection.js/issues/1074)
+  * Typing fixes
+
+## 1.2.3
+
+### What's new
+
+  * fix [#1007](https://github.com/Vincit/objection.js/issues/1007)
+  * fix [#1008](https://github.com/Vincit/objection.js/issues/1008)
+  * fix [#1047](https://github.com/Vincit/objection.js/issues/1047)
+
+## 1.2.2
+
+### What's new
+
+  * Improve reference cycle detection in `upsertGraph`
+
+## 1.2.1
+
+### What's new
+
+  * fix [#1009](https://github.com/Vincit/objection.js/issues/1009)
+
 ## 1.2.0
 
 ### What's new
@@ -14,7 +44,7 @@
 
 ### What's new
 
-  * Nothing! the npm release was somehow borked. This was just a release of 1.1.9.
+  * Nothing! the npm release was somehow borked. This was just a rerelease of 1.1.9.
 
 ## 1.1.9
 

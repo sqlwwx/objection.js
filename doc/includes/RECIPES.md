@@ -356,7 +356,8 @@ const jennifer = await Person
   .query()
   .patch({firstName: 'Jenn', lastName: 'Lawrence'})
   .where('id', 1234)
-  .returning('*');
+  .returning('*')
+  .first();
 
 console.log(jennifer.updatedAt); // NOW()-ish
 console.log(jennifer.firstName); // "Jenn"
@@ -457,6 +458,8 @@ This kind of associations don't have referential integrity and should be avoided
 using the _exclusive arc table_ pattern discussed [here](https://github.com/Vincit/objection.js/issues/19#issuecomment-291621442).
 
 ## Timestamps
+
+> This example is tested on postgres. You may need to use a different date format on other databases like mysql. See the database client's docs on which formats are supported.
 
 ```js
 class Person extends Model {
@@ -671,9 +674,9 @@ Here's a list of methods that may help working with composite keys:
  * [`$id`](#_s_id)
  * [`$values`](#_s_values)
 
-## Getting count of relations
+## Getting count of related objects
 
-Let's say you have a `Tweet` model and a `Like` model. `Tweet` has a `HasManyRelation` named `likers` to `Like` table.
+Let's say you have a `Tweet` model and a `Like` model. `Tweet` has a `HasManyRelation` named `likes` to `Like` table.
 Now let's assume you'd like to fetch a list of `Tweet`s and get the number of likes for each of them without fetching
 the actual `Like` rows. This cannot be easily achieved using `eager` because of the way the queries are optimized
 (you can read more [here](#eager)). You can leverage SQL's subqueries and the [`relatedQuery`](#relatedquery) helper:
@@ -683,7 +686,7 @@ const tweets = await Tweet
   .query()
   .select(
     'Tweet.*',
-    Tweet.relatedQuery('likers').count().as('numberOfLikes')
+    Tweet.relatedQuery('likes').count().as('numberOfLikes')
   );
 
 console.log(tweets[4].numberOfLikes);
@@ -696,7 +699,7 @@ select "Tweet".*, (select count(*) from "Like" where "Like"."tweetId" = "Tweet".
 ```
 
 Naturally you can add as many subquery selects as you like. For example you could also get the count of retweets
-in the same query. [`relatedQuery`](#relatedquery) method works with all relations and not just `HasManyRelation`.
+in the same query. [`relatedQuery`](#relatedquery) method works with all relation types and not just `HasManyRelation`.
 
 ## Error handling
 

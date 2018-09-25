@@ -4,7 +4,7 @@ const expect = require('expect.js');
 const Promise = require('bluebird');
 
 const { TimeoutError } = require('bluebird');
-const { raw, ref, Model, QueryBuilderOperation } = require('../..');
+const { raw, ref, lit, Model, QueryBuilderOperation } = require('../..');
 
 module.exports = session => {
   let Model1 = session.models.Model1;
@@ -225,8 +225,8 @@ module.exports = session => {
         it('.where() and object with toKnexRaw method', () => {
           return Model2.query()
             .where('model2_prop2', '>', {
-              toKnexRaw(knex) {
-                return knex.raw('?', 15);
+              toKnexRaw(builder) {
+                return builder.knex().raw('?', 15);
               }
             })
             .then(models => {
@@ -238,8 +238,8 @@ module.exports = session => {
           return Model2.query()
             .where({
               model2_prop2: {
-                toKnexRaw(knex) {
-                  return knex.raw('?', 20);
+                toKnexRaw(builder) {
+                  return builder.knex().raw('?', 20);
                 }
               }
             })
@@ -713,6 +713,97 @@ module.exports = session => {
             });
         });
 
+        if (session.isPostgres()) {
+          it('select subquery as an array', () => {
+            return Model1.query()
+              .select(
+                'Model1.*',
+                raw(
+                  'ARRAY(?) as "model1Ids"',
+                  Model1.relatedQuery('model1Relation2')
+                    .select('id_col')
+                    .orderBy('id_col')
+                )
+              )
+              .orderBy('id')
+              .then(res => {
+                expect(res[0].model1Ids).to.eql([1, 2, 3]);
+                expect(res[1].model1Ids).to.eql([]);
+              });
+          });
+
+          it('select subquery as an array with aliased table', () => {
+            return Model1.query()
+              .alias('m')
+              .select(
+                'm.*',
+                raw(
+                  'ARRAY(?) as "model1Ids"',
+                  // Test doubly nested `raw` for shits and giggles.
+                  raw(
+                    '?',
+                    Model1.relatedQuery('model1Relation2')
+                      .select('id_col')
+                      .orderBy('id_col')
+                  )
+                )
+              )
+              .orderBy('id')
+              .then(res => {
+                expect(res[0].model1Ids).to.eql([1, 2, 3]);
+                expect(res[1].model1Ids).to.eql([]);
+              });
+          });
+
+          it('select subquery as an array (unbound model)', () => {
+            class TestModel extends Model1 {}
+            TestModel.knex(null);
+
+            return TestModel.query(session.knex)
+              .select(
+                'Model1.*',
+                raw(
+                  'ARRAY(?) as "model1Ids"',
+                  TestModel.relatedQuery('model1Relation2')
+                    .select('id_col')
+                    .orderBy('id_col')
+                )
+              )
+              .orderBy('id')
+              .then(res => {
+                expect(res[0].model1Ids).to.eql([1, 2, 3]);
+                expect(res[1].model1Ids).to.eql([]);
+              });
+          });
+        }
+
+        it('select subquery to same table with alias', () => {
+          return Model1.query()
+            .upsertGraph(
+              {
+                id: 1,
+                model1Relation1: {
+                  id: 2
+                }
+              },
+              { relate: true }
+            )
+            .then(() => {
+              return Model1.query()
+                .findById(1)
+                .alias('m1')
+                .select(
+                  'm1.*',
+                  Model1.relatedQuery('model1Relation1')
+                    .select('id')
+                    .as('foo')
+                );
+            })
+            .then(res => {
+              expect(res.foo).to.equal(2);
+            });
+        });
+
         it('.modify()', () => {
           let builder = Model2.query();
 
@@ -844,6 +935,7 @@ module.exports = session => {
               .whereNot('model2.id_col', 1)
               .orWhereNot('model2.id_col', 2)
               .whereRaw('model2.id_col is null')
+              .andWhereRaw('model2.id_col is null')
               .orWhereRaw('model2.id_col is null')
               .whereExists(Model2.query())
               .orWhereExists(Model2.query())
@@ -1031,6 +1123,15 @@ module.exports = session => {
               { id: 2, relId: null, $afterGetCalled: 1 },
               { id: 3, relId: null, $afterGetCalled: 1 }
             ]);
+          });
+      });
+
+      it('should work in where', () => {
+        return Model1.query()
+          .where(lit(3), Model1.relatedQuery('model1Relation1').select('id'))
+          .first()
+          .then(res => {
+            expect(res.id).to.equal(1);
           });
       });
     });
@@ -1467,7 +1568,7 @@ module.exports = session => {
           });
       });
 
-      it('should work with namedFilters', () => {
+      it('should work with modifiers', () => {
         return Model2.query()
           .joinRelation('model2Relation1(idGreaterThan)')
           .select('model2Relation1.id', 'model2.*')
@@ -1480,7 +1581,42 @@ module.exports = session => {
       });
 
       if (session.isPostgres()) {
-        it('should work with raw selects in namedFilters', () => {
+        it('should work with raw selects in modifiers', () => {
+          class TestModel2 extends Model2 {
+            static get modifiers() {
+              return {
+                rawSelect: qb =>
+                  qb.select('*').select(raw(`model2_prop1 || ' ' || model2_prop1 as "rawSelect"`))
+              };
+            }
+          }
+
+          class TestModel1 extends Model1 {
+            static get relationMappings() {
+              return {
+                model1Relation2: {
+                  relation: Model.HasManyRelation,
+                  modelClass: TestModel2,
+                  join: {
+                    from: 'Model1.id',
+                    to: 'model2.model1_id'
+                  }
+                }
+              };
+            }
+          }
+
+          return TestModel1.query()
+            .joinRelation('model1Relation2(rawSelect)')
+            .select('rawSelect')
+            .findById(1)
+            .where('model1Relation2.id_col', 2)
+            .then(model => {
+              expect(model.rawSelect).to.equal('hejsan 2 hejsan 2');
+            });
+        });
+
+        it('namedFilters should work as an alias for modifiers', () => {
           class TestModel2 extends Model2 {
             static get namedFilters() {
               return {
@@ -1647,16 +1783,6 @@ module.exports = session => {
           });
         });
 
-        // This doesn't belong here, but there is no better place at the moment.
-        it('should join the related rows', () => {
-          return Model1.getRelation('model1Relation1')
-            .join(Model1.query())
-            .then(models => {
-              expect(models).to.have.length(2);
-              expect(_.map(models, 'model1Prop1').sort()).to.eql(['hello 1', 'hello 3']);
-            });
-        });
-
         describe('knex methods', () => {
           it('.select()', () => {
             return parent1
@@ -1800,24 +1926,6 @@ module.exports = session => {
                 });
               })
           ]);
-        });
-
-        // This doesn't belong here, but there is no better place at the moment.
-        it('should join the related rows', () => {
-          return Model1.getRelation('model1Relation2')
-            .join(Model1.query())
-            .select('model2_prop1')
-            .then(models => {
-              expect(models).to.have.length(6);
-              expect(_.map(models, 'model2_prop1').sort()).to.eql([
-                'text 1',
-                'text 2',
-                'text 3',
-                'text 4',
-                'text 5',
-                'text 6'
-              ]);
-            });
         });
 
         describe('knex methods', () => {
@@ -2077,24 +2185,6 @@ module.exports = session => {
                   aliasedExtra: 'extra 6',
                   $afterGetCalled: 1
                 }
-              ]);
-            });
-        });
-
-        // This doesn't belong here, but there is no better place at the moment.
-        it('should join the related rows', () => {
-          return Model2.getRelation('model2Relation1')
-            .join(Model2.query())
-            .select('model1Prop1')
-            .then(models => {
-              expect(models).to.have.length(6);
-              expect(_.map(models, 'model1Prop1').sort()).to.eql([
-                'blaa 1',
-                'blaa 2',
-                'blaa 3',
-                'blaa 4',
-                'blaa 5',
-                'blaa 6'
               ]);
             });
         });

@@ -764,10 +764,10 @@ module.exports = session => {
       ]);
     });
 
-    // This tests the Model.namedFilters feature.
+    // This tests the Model.modifiers feature.
     test(
       `[
-      model1Relation1(select:id, localNamedFilter),
+      model1Relation1(select:id, localModifier),
       model1Relation2.[
         model2Relation1(select:model1Prop1).[
           model1Relation1(select:id, select:model1Prop1, select:model1Prop1Aliased),
@@ -843,7 +843,7 @@ module.exports = session => {
       },
       {
         filters: {
-          localNamedFilter: builder => builder.select('model1Prop2')
+          localModifier: builder => builder.select('model1Prop2')
         }
       }
     );
@@ -870,6 +870,19 @@ module.exports = session => {
               $afterGetCalled: 1
             }
           });
+        });
+    });
+
+    it('should fail fast on incorrect table name', function(done) {
+      Model1.query()
+        .findById(1)
+        .joinEager('model1Relation111')
+        .then(_.noop)
+        .catch(err => {
+          expect(err.message).to.equal(
+            'unknown relation "model1Relation111" in a relation expression'
+          );
+          done();
         });
     });
 
@@ -1537,7 +1550,7 @@ module.exports = session => {
             expect(err).to.be.a(ValidationError);
             expect(err.type).to.equal('RelationExpression');
             expect(err.message).to.equal(
-              'could not find filter "missingFilter" for relation "model1Relation2"'
+              'could not find modifier "missingFilter" for relation "model1Relation2"'
             );
             done();
           })
@@ -1677,6 +1690,44 @@ module.exports = session => {
 
                 expect(models[0].model1Relation2[0].model2Relation1).to.have.length(1);
                 expect(models[0].model1Relation2[0].model2Relation1[0].id).to.equal(6);
+              });
+          })
+        );
+      });
+
+      it('should accept a modifier name', () => {
+        return Promise.all(
+          [Model1.WhereInEagerAlgorithm, Model1.JoinEagerAlgorithm].map(eagerAlgo => {
+            return Model1.query()
+              .eagerAlgorithm(eagerAlgo)
+              .where('Model1.id', 1)
+              .eager('model1Relation2.model2Relation1')
+              .modifyEager('model1Relation2.model2Relation1', 'select:model1Prop1')
+              .then(models => {
+                const model2 = models[0].model1Relation2.find(it => it.idCol === 2);
+                expect(Object.keys(model2.model2Relation1[0])).to.eql([
+                  'model1Prop1',
+                  '$afterGetCalled'
+                ]);
+              });
+          })
+        );
+      });
+
+      it('should accept a list of modifier names', () => {
+        return Promise.all(
+          [Model1.WhereInEagerAlgorithm, Model1.JoinEagerAlgorithm].map(eagerAlgo => {
+            return Model1.query()
+              .eagerAlgorithm(eagerAlgo)
+              .where('Model1.id', 1)
+              .eager('model1Relation1')
+              .modifyEager('model1Relation1', ['select:id', 'select:model1Prop1'])
+              .then(models => {
+                expect(Object.keys(models[0].model1Relation1)).to.eql([
+                  'id',
+                  'model1Prop1',
+                  '$afterGetCalled'
+                ]);
               });
           })
         );
