@@ -320,6 +320,14 @@ module.exports = session => {
             });
         });
 
+        it('raw should accept non-string values', () => {
+          return Model2.query()
+            .where('model2_prop2', raw(20))
+            .then(models => {
+              expect(_.map(models, 'model2Prop2').sort()).to.eql([20]);
+            });
+        });
+
         it('.where() with objection.raw and a subquery builder in an object', () => {
           return Model2.query()
             .where(
@@ -649,6 +657,27 @@ module.exports = session => {
             });
         });
 
+        it('knex-style function subqueries', () => {
+          return Model1.query()
+            .from(builder =>
+              builder
+                .select('model2.*')
+                .from('model2')
+                .as('foo')
+            )
+            .orderBy(builder =>
+              builder
+                .from('model2')
+                .where('model2.id_col', ref('foo.id_col'))
+                .select('model2_prop2')
+            )
+            .whereExists(builder => builder.from('Model1').where('foo.model1_id', ref('Model1.id')))
+            .castTo(Model2)
+            .then(models => {
+              expect(models.map(it => it.model2Prop2)).to.eql([10, 20, 30]);
+            });
+        });
+
         it('raw in select', () => {
           return Model2.query()
             .select('model2.*', raw('?? + ? as ??', 'model2_prop2', 10, 'model2_prop2'))
@@ -801,6 +830,66 @@ module.exports = session => {
             })
             .then(res => {
               expect(res.foo).to.equal(2);
+            });
+        });
+
+        it('deeply nested where subquery to same table with alias', () => {
+          return Model1.query()
+            .upsertGraph(
+              {
+                id: 1,
+                model1Relation1: {
+                  id: 2
+                }
+              },
+              { relate: true }
+            )
+            .then(() => {
+              return Model1.query()
+                .alias('m1')
+                .where(builder => {
+                  // The two nested grouping where's are relevant here.
+                  builder.where(builder => {
+                    builder.where(lit(2), Model1.relatedQuery('model1Relation1').select('id'));
+                  });
+                });
+            })
+            .then(res => {
+              expect(res).to.have.length(1);
+              expect(res[0].id).to.equal(1);
+            });
+        });
+
+        it('deeply nested subqueries to same table with alias', () => {
+          return Model1.query()
+            .insertGraph({
+              id: 1001,
+              model1Relation1: {
+                id: 1002,
+                model1Relation1: {
+                  id: 1003,
+                  model1Relation1: {
+                    id: 1004
+                  }
+                }
+              }
+            })
+            .then(() => {
+              return Model1.query()
+                .alias('m1')
+                .whereExists(
+                  Model1.relatedQuery('model1Relation1')
+                    .alias('m2')
+                    .whereExists(
+                      Model1.relatedQuery('model1Relation1')
+                        .alias('m3')
+                        .whereExists(Model1.relatedQuery('model1Relation1').alias('m4'))
+                    )
+                );
+            })
+            .then(res => {
+              expect(res).to.have.length(1);
+              expect(res[0].id).to.equal(1001);
             });
         });
 

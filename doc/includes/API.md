@@ -454,6 +454,8 @@ const [person1, person2] = await Person.query().findByIds([1, 2]);
 const [person1, person2] = await Person.query().findByIds([[1, '10'], [2, '10']]);
 ```
 
+Finds a list of items. The order of the returned items is not guaranteed to be the same as the order of the inputs.
+
 ##### Arguments
 
 Argument|Type|Description
@@ -2418,7 +2420,7 @@ Type|Description
 
 
 
-#### applyFilter
+#### applyModifier
 
 Applies modifiers to the query builder.
 
@@ -2434,6 +2436,13 @@ modifier|string|The name of the modifier, as found in [`modifiers`](#modifiers).
 Type|Description
 ----|-----------------------------
 [`QueryBuilder`](#querybuilder)|`this` query builder for chaining.
+
+
+
+
+#### applyFilter
+
+An alias for [`applyModifier`](#applymodifier)
 
 
 
@@ -3142,6 +3151,26 @@ boolean|true if the query performs an unrelate operation.
 
 
 
+#### isInternal
+
+```js
+const isInternal = queryBuilder.isInternal();
+```
+
+Returns true for internal "helper" queries that are not directly
+part of the operation being executed. For example the `select` queries
+performed by `upsertGraph` to get the current state of the graph are
+internal queries.
+
+##### Return value
+
+Type|Description
+----|-----------------------------
+boolean|true if the query performs an internal helper operation.
+
+
+
+
 #### hasWheres
 
 ```js
@@ -3545,15 +3574,15 @@ console.log(people[0].children[0].pets[0].name);
 console.log(people[0].children[0].movies[0].id);
 ```
 
-> Relations can be filtered by giving modifier functions as arguments
+> Relations can be modified by giving modifier functions as arguments
 > to the relations:
 
 ```js
 const people = await Person
   .query()
-  .eager('children(orderByAge).[pets(onlyDogs, orderByName), movies]', {
-    orderByAge: (builder) => {
-      builder.orderBy('age');
+  .eager('children(selectNameAndId).[pets(onlyDogs, orderByName), movies]', {
+    selectNameAndId: (builder) => {
+      builder.select('name', 'id');
     },
     orderByName: (builder) => {
       builder.orderBy('name');
@@ -3573,7 +3602,11 @@ cconsole.log(people[0].children[0].movies[0].id);
 class Person extends Model {
   static get modifiers() {
     return {
-      orderByAge: (builder) => {
+      defaultSelects(builder) {
+        builder.select('id', 'firstName', 'lastName')
+      },
+
+      orderByAge(builder) {
         builder.orderBy('age');
       }
     };
@@ -3583,10 +3616,11 @@ class Person extends Model {
 class Animal extends Model {
   static get modifiers() {
     return {
-      orderByName: (builder) => {
+      orderByName(builder) {
         builder.orderBy('name');
       },
-      onlyDogs: (builder) => {
+
+      onlyDogs(builder) {
         builder.where('species', 'dog');
       }
     };
@@ -3595,7 +3629,7 @@ class Animal extends Model {
 
 const people = await Person
   .query()
-  .eager('children(orderByAge).[pets(onlyDogs, orderByName), movies]');
+  .eager('children(defaultSelects, orderByAge).[pets(onlyDogs, orderByName), movies]');
 
 console.log(people[0].children[0].pets[0].name);
 console.log(people[0].children[0].movies[0].id);
@@ -3608,8 +3642,8 @@ const people = await Person
   .query()
   .eager('children.[pets, movies]')
   .modifyEager('children', builder => {
-    // Order children by age.
-    builder.orderBy('age');
+    // Order children by age and only select id.
+    builder.orderBy('age').select('id');
   })
   .modifyEager('children.[pets, movies]', builder => {
     // Only select `pets` and `movies` whose id > 10 for the children.
@@ -3821,6 +3855,56 @@ Shorthand for `eagerAlgorithm(Model.NaiveEagerAlgorithm).mergeEager(expr)`.
 
 
 
+#### eagerObject
+
+```js
+const builder = Person.query()
+  .eager('children.pets(onlyId)')
+
+const eagerObject = builder.eagerObject();
+console.log(eagerObject.children.pets.modify);
+// prints ["onlyId"]
+
+eagerObject.children.movies = true
+// You can modify the object and pass it back to the `eager` method.
+builder.eager(eagerObject)
+```
+
+Returns the object representation of the current eager expression.
+
+See [this section](#relationexpression-object-notation) for more examples and information about the structure of the returned object.
+
+##### Return value
+
+Type|Description
+----|-----------------------------
+object|Object representation of the current eager expression.
+
+
+
+#### eagerModifiers
+
+```js
+const builder = Person.query()
+  .eager('children.pets(onlyId)', {
+    onlyId: builder.select('id')
+  })
+
+const modifiers = builder.eagerModifiers();
+console.log(modifiers.onlyId.toString());
+// prints 'builder => builder.select("id")'
+```
+
+Returns the current eager modifiers of the query.
+
+##### Return value
+
+Type|Description
+----|-----------------------------
+object|Eager modifiers of the query.
+
+
+
 #### allowEager
 
 ```js
@@ -3912,7 +3996,7 @@ Type|Description
 const builder = queryBuilder.modifyEager(pathExpression, modifier);
 ```
 
-Can be used to modify the eager queries.
+Can be used to modify eager queries.
 
 The `pathExpression` is a relation expression that specifies the queries for which the modifier is given.
 
@@ -6177,6 +6261,40 @@ row|Object|A database row.
 Type|Description
 ----|-----------------------------
 [`Model`](#model)|The created model instance
+
+
+
+
+#### modifierNotFound
+
+```js
+class BaseModel extends Model {
+  static modifierNotFound(builder, modifier) {
+    const { properties } = this.jsonSchema
+    if (properties && modifier in properties) {
+      builder.select(modifier)
+    } else {
+      super.modifierNotFound(builder, modifier)
+    }
+  }
+}
+```
+
+Handles modifiers that are not recognized by the various mechanisms that can specify
+them, such as [`modify`](#modify) and [`applyModifier`](#applymodifier), as well as
+the use of modifiers in eager expressions (see [`RelationExpression`](#relationexpression))
+and in relations (see [`RelationMapping`](#relationmapping).
+
+By default, the static `modifierNotFound()` hook throws a `ModifierNotFoundError` error.
+If a model class overrides the hook, it can decide to handle the modifer through the passed
+`builder` instance, or call the hook's definition in the super class to still throw the error.
+
+##### Arguments
+
+Argument|Type|Description
+--------|----|-------------------
+builder|[`QueryBuilder`](#querybuilder)|The query builder on which to apply the modifier.
+modifier|string|The name of the unknown modifier.
 
 
 

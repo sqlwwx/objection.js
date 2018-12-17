@@ -116,6 +116,29 @@ describe('QueryBuilder', () => {
     expect(called).to.equal(true);
   });
 
+  it('should throw if an unknown modifier is specified', () => {
+    const builder = QueryBuilder.forClass(TestModel);
+
+    TestModel.modifiers = {};
+
+    expect(() => {
+      builder.applyModifier('unknown');
+    }).to.throwException(err => {
+      expect(err.message).to.equal(
+        'Unable to determine modify function from provided value: "unknown".'
+      );
+    });
+  });
+
+  it('modify() should do nothing when receiving `undefined`', () => {
+    let builder = QueryBuilder.forClass(TestModel);
+    let res;
+    expect(() => {
+      res = builder.modify(undefined);
+    }).to.not.throwException();
+    expect(res === builder).to.equal(true);
+  });
+
   ['applyFilter', 'applyModifier', 'modify'].forEach(method => {
     it(method + ' accept a list of strings and call the corresponding modifiers', () => {
       const builder = QueryBuilder.forClass(TestModel);
@@ -167,6 +190,70 @@ describe('QueryBuilder', () => {
       expect(aCalled).to.equal(true);
       expect(bCalled).to.equal(true);
     });
+
+    it(method + ' calls the modifierNotFound() hook for unknown modifiers', () => {
+      const builder = QueryBuilder.forClass(TestModel);
+
+      let caughtModifiers = [];
+
+      TestModel.modifierNotFound = (qb, modifier) => {
+        if (qb === builder) {
+          caughtModifiers.push(modifier);
+        }
+      };
+
+      TestModel.modifiers = {
+        c: 'a',
+
+        d: ['c', 'b']
+      };
+
+      caughtModifiers = [];
+      builder[method]('a');
+      expect(caughtModifiers).to.eql(['a']);
+
+      caughtModifiers = [];
+      builder[method]('b');
+      expect(caughtModifiers).to.eql(['b']);
+
+      caughtModifiers = [];
+      builder[method]('c');
+      expect(caughtModifiers).to.eql(['a']);
+
+      caughtModifiers = [];
+      builder[method]('d');
+      expect(caughtModifiers).to.eql(['a', 'b']);
+    });
+  });
+
+  it('should still throw if modifierNotFound() delegate to the definition in the super class', () => {
+    const builder = QueryBuilder.forClass(TestModel);
+
+    TestModel.modifierNotFound = function(builder, modifier) {
+      Model.modifierNotFound(builder, modifier);
+    };
+
+    expect(() => {
+      builder.applyModifier('unknown');
+    }).to.throwException(err => {
+      expect(err.message).to.equal(
+        'Unable to determine modify function from provided value: "unknown".'
+      );
+    });
+  });
+
+  it('should not throw if modifierNotFound() handles an unknown modifier', () => {
+    const builder = QueryBuilder.forClass(TestModel);
+
+    let caughtModifier = null;
+    TestModel.modifierNotFound = (builder, modifier) => {
+      caughtModifier = modifier;
+    };
+
+    expect(() => {
+      builder.applyModifier('unknown');
+    }).to.not.throwException();
+    expect(caughtModifier).to.equal('unknown');
   });
 
   it('should call the callback passed to .then after execution', done => {
@@ -729,15 +816,16 @@ describe('QueryBuilder', () => {
   });
 
   it('resultSize should create and execute a query that returns the size of the query', done => {
-    mockKnexQueryResults = [[{ count: 123 }]];
+    mockKnexQueryResults = [[{ count: '123' }]];
     QueryBuilder.forClass(TestModel)
       .where('test', 100)
       .orderBy('order')
+      .limit(10)
+      .offset(100)
       .resultSize()
       .then(res => {
         expect(executedQueries).to.have.length(1);
         expect(res).to.equal(123);
-        // resultSize should cancel the groupBy call since it doesn't affect the outcome.
         expect(executedQueries[0]).to.equal(
           'select count(*) as "count" from (select "Model".* from "Model" where "test" = 100) as "temp"'
         );
@@ -747,7 +835,7 @@ describe('QueryBuilder', () => {
   });
 
   it('range should return a range and the total count', done => {
-    mockKnexQueryResults = [[{ a: 1 }], [{ count: 123 }]];
+    mockKnexQueryResults = [[{ a: '1' }], [{ count: '123' }]];
     QueryBuilder.forClass(TestModel)
       .where('test', 100)
       .orderBy('order')
@@ -766,7 +854,7 @@ describe('QueryBuilder', () => {
   });
 
   it('page should return a page and the total count', done => {
-    mockKnexQueryResults = [[{ a: 1 }], [{ count: 123 }]];
+    mockKnexQueryResults = [[{ a: '1' }], [{ count: '123' }]];
     QueryBuilder.forClass(TestModel)
       .where('test', 100)
       .orderBy('order')
@@ -1445,6 +1533,177 @@ describe('QueryBuilder', () => {
     expect(query.tableRefFor(TestModel)).to.equal('Lyl');
   });
 
+  it('should use Model.QueryBuilder in builder methods', () => {
+    class CustomQueryBuilder extends TestModel.QueryBuilder {}
+
+    TestModel.QueryBuilder = CustomQueryBuilder;
+    const checks = [];
+
+    return TestModel.query()
+      .select('*', builder => {
+        checks.push(builder instanceof CustomQueryBuilder);
+      })
+      .where(builder => {
+        checks.push(builder instanceof CustomQueryBuilder);
+
+        builder.where(builder => {
+          checks.push(builder instanceof CustomQueryBuilder);
+        });
+      })
+      .modify(builder => {
+        checks.push(builder instanceof CustomQueryBuilder);
+      })
+      .then(() => {
+        expect(checks).to.have.length(4);
+        expect(checks.every(it => it)).to.equal(true);
+      });
+  });
+
+  it('hasSelection', () => {
+    expect(TestModel.query().hasSelection('foo')).to.equal(true);
+    expect(TestModel.query().hasSelection(ref('foo'))).to.equal(true);
+    expect(TestModel.query().hasSelection('Model.foo')).to.equal(true);
+    expect(TestModel.query().hasSelection(ref('Model.foo'))).to.equal(true);
+    expect(TestModel.query().hasSelection('DifferentTable.foo')).to.equal(false);
+    expect(TestModel.query().hasSelection(ref('DifferentTable.foo'))).to.equal(false);
+
+    expect(
+      TestModel.query()
+        .select('*')
+        .hasSelection('DifferentTable.anything')
+    ).to.equal(true);
+
+    expect(
+      TestModel.query()
+        .select(ref('*'))
+        .hasSelection(ref('DifferentTable.anything'))
+    ).to.equal(true);
+
+    expect(
+      TestModel.query()
+        .select('foo')
+        .hasSelection('foo')
+    ).to.equal(true);
+
+    expect(
+      TestModel.query()
+        .select(ref('foo'))
+        .hasSelection(ref('foo'))
+    ).to.equal(true);
+
+    expect(
+      TestModel.query()
+        .select('foo')
+        .hasSelection('Model.foo')
+    ).to.equal(true);
+
+    expect(
+      TestModel.query()
+        .select(ref('foo'))
+        .hasSelection(ref('Model.foo'))
+    ).to.equal(true);
+
+    expect(
+      TestModel.query()
+        .select('foo')
+        .hasSelection('DifferentTable.foo')
+    ).to.equal(false);
+
+    expect(
+      TestModel.query()
+        .select(ref('foo'))
+        .hasSelection(ref('DifferentTable.foo'))
+    ).to.equal(false);
+
+    expect(
+      TestModel.query()
+        .select('foo')
+        .hasSelection('bar')
+    ).to.equal(false);
+
+    expect(
+      TestModel.query()
+        .select(ref('foo'))
+        .hasSelection(ref('bar'))
+    ).to.equal(false);
+
+    expect(
+      TestModel.query()
+        .select('Model.foo')
+        .hasSelection('foo')
+    ).to.equal(true);
+
+    expect(
+      TestModel.query()
+        .select(ref('Model.foo'))
+        .hasSelection(ref('foo'))
+    ).to.equal(true);
+
+    expect(
+      TestModel.query()
+        .select('Model.foo')
+        .hasSelection('Model.foo')
+    ).to.equal(true);
+
+    expect(
+      TestModel.query()
+        .select(ref('Model.foo'))
+        .hasSelection(ref('Model.foo'))
+    ).to.equal(true);
+
+    expect(
+      TestModel.query()
+        .select('Model.foo')
+        .hasSelection('NotTestModel.foo')
+    ).to.equal(false);
+
+    expect(
+      TestModel.query()
+        .select(ref('Model.foo'))
+        .hasSelection(ref('NotTestModel.foo'))
+    ).to.equal(false);
+
+    expect(
+      TestModel.query()
+        .select('Model.foo')
+        .hasSelection('bar')
+    ).to.equal(false);
+
+    expect(
+      TestModel.query()
+        .select(ref('Model.foo'))
+        .hasSelection(ref('bar'))
+    ).to.equal(false);
+
+    expect(
+      TestModel.query()
+        .alias('t')
+        .select('foo')
+        .hasSelection('t.foo')
+    ).to.equal(true);
+
+    expect(
+      TestModel.query()
+        .alias('t')
+        .select('t.foo')
+        .hasSelection('foo')
+    ).to.equal(true);
+
+    expect(
+      TestModel.query()
+        .alias('t')
+        .select('t.foo')
+        .hasSelection('t.foo')
+    ).to.equal(true);
+
+    expect(
+      TestModel.query()
+        .alias('t')
+        .select('foo')
+        .hasSelection('Model.foo')
+    ).to.equal(false);
+  });
+
   describe('eager, allowEager, and mergeAllowEager', () => {
     beforeEach(() => {
       const rel = {
@@ -1716,6 +1975,50 @@ describe('QueryBuilder', () => {
           expect(executedQueries).to.have.length(0);
           done();
         });
+    });
+
+    it('eagerObject() should return the eager expression as an object', () => {
+      const builder = QueryBuilder.forClass(TestModel).eager('[a, b.c(foo)]');
+
+      expect(builder.eagerObject()).to.eql({
+        $name: null,
+        $relation: null,
+        $modify: [],
+        $recursive: false,
+        $allRecursive: false,
+        a: {
+          $name: 'a',
+          $relation: 'a',
+          $modify: [],
+          $recursive: false,
+          $allRecursive: false
+        },
+        b: {
+          $name: 'b',
+          $relation: 'b',
+          $modify: [],
+          $recursive: false,
+          $allRecursive: false,
+          c: {
+            $name: 'c',
+            $relation: 'c',
+            $modify: ['foo'],
+            $recursive: false,
+            $allRecursive: false
+          }
+        }
+      });
+    });
+
+    it("eagerModifiers() should return the eager expression's modifiers as an object", () => {
+      const foo = builder => builder.where('foo');
+      const builder = QueryBuilder.forClass(TestModel).eager('[a, b.c(foo)]', {
+        foo
+      });
+
+      expect(builder.eagerModifiers()).to.eql({
+        foo
+      });
     });
 
     it('should use correct query builders', done => {
@@ -2015,13 +2318,13 @@ describe('QueryBuilder', () => {
       expect(builder2.context().transaction === mockKnex).to.equal(true);
     });
 
-    it('calling `childQueryOf(builder, true)` should copy the context', () => {
+    it('calling `childQueryOf(builder, { fork: true })` should copy the context', () => {
       const builder = TestModel.query();
       const origContext = { a: 1 };
 
       builder.context(origContext);
 
-      const builder2 = TestModel.query().childQueryOf(builder, true);
+      const builder2 = TestModel.query().childQueryOf(builder, { fork: true });
       builder2.mergeContext({ b: 2 });
 
       expect(builder.context()).to.eql({

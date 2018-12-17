@@ -45,8 +45,8 @@ What objection.js **doesn't** give you:
     to you. knex has a great [migration tool](http://knexjs.org/#Migrations) that we recommend for this job. Check
     out the [example project](https://github.com/Vincit/objection.js/tree/master/examples/express-es6).
 
-Objection.js uses Promises and coding practices that make it ready for the future. We use Well known
-[OOP](https://en.wikipedia.org/wiki/Object-oriented_programming) techniques and ES2015 classes and inheritance
+Objection.js uses Promises and coding practices that make it ready for the future. We use well known
+[OOP](https://en.wikipedia.org/wiki/Object-oriented_programming) techniques, ES2015 classes, and inheritance
 in the codebase. You can use things like [async/await](http://jakearchibald.com/2014/es7-async-functions/)
 using node ">=7.6.0" or alternatively with a transpiler such as [Babel](https://babeljs.io/). Check out our [ES2015](https://github.com/Vincit/objection.js/tree/master/examples/express-es6)
 and [ESNext](https://github.com/Vincit/objection.js/tree/master/examples/express-es7) example projects.
@@ -1016,26 +1016,27 @@ const people = await Person
 console.log(people[0].children[0].children[0].children[0].firstName);
 ```
 
-> Relations can be filtered using the [`modifyEager`](#modifyeager) method:
+> Relation queries can be modified using the [`modifyEager`](#modifyeager) method:
 
 ```js
 const people = await Person
   .query()
   .eager('[children.[pets, movies], movies]')
   .modifyEager('children.pets', builder => {
-    // Only select pets older than 10 years old for children.
-    builder.where('age', '>', 10);
+    // Only select pets older than 10 years old for children
+    // and only return their names.
+    builder.where('age', '>', 10).select('name');
   });
 ```
 
-> Relations can also be filtered using modifier functions like this:
+> Relations can also be filtered using modifier functions like this (note that you can define [reusable modifiers](#modifiers) for models):
 
 ```js
 const people = await Person
   .query()
-  .eager('[pets(orderByName, onlyDogs), children(orderByAge).[pets, children]]', {
-    orderByName: (builder) => {
-      builder.orderBy('name');
+  .eager('[pets(selectNameAndId, onlyDogs), children(orderByAge).[pets, children]]', {
+    selectNameAndId: (builder) => {
+      builder.select('name', 'id');
     },
     orderByAge: (builder) => {
       builder.orderBy('age');
@@ -1162,9 +1163,11 @@ In addition to the [`eager`](#eager) method, relations can be fetched using the 
 
 By default eager loading is done using multiple separate queries (for details see [this blog post](https://www.vincit.fi/en/blog/nested-eager-loading-and-inserts-with-objection-js/)).
 You can choose to use a join based eager loading algorithm that only performs one single query to fetch the whole
-eager tree. You can select which algorithm to use per query using [`eagerAlgorithm`](#eageralgorithm) method or
+eager tree. You can select which algorithm to use per query using the [`eagerAlgorithm`](#eageralgorithm) method or the [`joinEager`](#joineager) shortcut or
 per model by setting the [`defaultEagerAlgorithm`](#defaulteageralgorithm) property. All algorithms
 have their strengths and weaknesses, which are discussed in detail [here](#eager).
+
+You can modify the eager loading queries by using the [`modifyEager`](#modifyeager) method or by defining either [in-place modifiers](#eager) or [model modifiers](#modifiers) and using them in a relation expression (see the examples). Modifiers may call any query building methods like `where`, `select` and `orderBy`. See the limitations when using `limit` and `offset` in the limitations section [here](#eager).
 
 # Graph inserts
 
