@@ -8,6 +8,7 @@
 // * Drew R. <https://github.com/drew-r>
 // * Karl Blomster <https://github.com/kblomster>
 // * And many others: See <https://github.com/Vincit/objection.js/blob/master/typings/objection/index.d.ts>
+// TypeScript Version: 2.8
 
 // PLEASE NOTE, the generic type symbols in this file follow this definition:
 //   QM - queried model
@@ -141,6 +142,10 @@ declare namespace Objection {
     shallow?: boolean;
   }
 
+  export interface ToJsonOptions extends CloneOptions {
+    virtuals?: boolean | Array<string>;
+  }
+
   export class NotFoundError extends Error {
     statusCode: number;
     data?: any;
@@ -218,7 +223,7 @@ declare namespace Objection {
 
   export interface RelationMapping {
     relation: Relation;
-    modelClass: ModelClass<any> | string;
+    modelClass: (() => ModelClass<any>) | ModelClass<any> | string;
     join: RelationJoin;
     modify?: ((queryBuilder: QueryBuilder<any>) => QueryBuilder<any>) | string | object;
     filter?: ((queryBuilder: QueryBuilder<any>) => QueryBuilder<any>) | string | object;
@@ -235,7 +240,7 @@ declare namespace Objection {
     aliases?: string[];
   }
 
-  export interface UpsertOptions {
+  export interface UpsertGraphOptions {
     relate?: boolean | string[];
     unrelate?: boolean | string[];
     insertMissing?: boolean | string[];
@@ -246,6 +251,23 @@ declare namespace Objection {
     noRelate?: boolean | string[];
     noUnrelate?: boolean | string[];
   }
+
+  type GraphModel<T> =
+    | ({ '#id'?: string; '#ref'?: never; '#dbRef'?: never } & T)
+    | ({ '#id'?: never; '#ref': string; '#dbRef'?: never } & { [P in keyof T]?: never })
+    | ({ '#id'?: never; '#ref'?: never; '#dbRef': number } & { [P in keyof T]?: never });
+
+  type NonFunctionPropertyNames<T> = { [K in keyof T]: T[K] extends Function ? never : K }[keyof T];
+
+  interface DeepPartialGraphArray<T> extends Array<DeepPartialGraph<T>> {}
+
+  type DeepPartialGraphModel<T> =
+    | GraphModel<{ [P in NonFunctionPropertyNames<T>]?: DeepPartialGraph<T[P]> }>
+    | Partial<T>;
+
+  type DeepPartialGraph<T> = T extends (any[] | ReadonlyArray<any>)
+    ? DeepPartialGraphArray<T[number]>
+    : T extends Model ? DeepPartialGraphModel<T> : T;
 
   export interface InsertGraphOptions {
     relate?: boolean | string[];
@@ -281,7 +303,7 @@ declare namespace Objection {
   type RelationExpression = string | object;
 
   interface FilterFunction<QM extends Model> {
-    (queryBuilder: QueryBuilder<QM, QM[]>): void;
+    (this: QueryBuilder<QM, QM[]>, queryBuilder: QueryBuilder<QM, QM[]>): void;
   }
 
   interface FilterExpression<QM extends Model> {
@@ -357,7 +379,10 @@ declare namespace Objection {
   }
 
   interface Filters<QM extends Model> {
-    [filterName: string]: (queryBuilder: QueryBuilder<QM, QM[]>) => void;
+    [filterName: string]: (
+      this: QueryBuilder<QM, QM[]>,
+      queryBuilder: QueryBuilder<QM, QM[]>
+    ) => void;
   }
 
   interface Properties {
@@ -386,6 +411,7 @@ declare namespace Objection {
     dbRefProp: string;
     propRefRegex: RegExp;
     pickJsonSchemaProperties: boolean;
+    useLimitInFirst?: boolean;
     defaultEagerAlgorithm?: EagerAlgorithm;
     defaultEagerOptions?: EagerOptions;
     QueryBuilder: typeof QueryBuilder;
@@ -541,8 +567,8 @@ declare namespace Objection {
     $afterValidate(json: Pojo, opt: ModelOptions): void; // may throw ValidationError if validation fails
 
     $toDatabaseJson(): object;
-    $toJson(opt?: CloneOptions): object;
-    toJSON(opt?: CloneOptions): object;
+    $toJson(opt?: ToJsonOptions): object;
+    toJSON(opt?: ToJsonOptions): object;
     $parseDatabaseJson(json: Pojo): Pojo;
     $formatDatabaseJson(json: Pojo): Pojo;
     $parseJson(json: Pojo, opt?: ModelOptions): Pojo;
@@ -645,19 +671,36 @@ declare namespace Objection {
   }
 
   interface InsertGraph<QM extends Model> {
-    (modelsOrObjects?: Partial<QM>[], options?: InsertGraphOptions): QueryBuilder<QM, QM[]>;
-    (modelOrObject?: Partial<QM>, options?: InsertGraphOptions): QueryBuilder<QM, QM>;
+    (modelsOrObjects?: DeepPartialGraph<QM>[], options?: InsertGraphOptions): QueryBuilder<
+      QM,
+      QM[]
+    >;
+    (modelOrObject?: DeepPartialGraph<QM>, options?: InsertGraphOptions): QueryBuilder<QM, QM>;
     (): this;
   }
 
-  interface Upsert<QM extends Model> {
-    (modelsOrObjects?: Partial<QM>[], options?: UpsertOptions): QueryBuilder<QM, QM[]>;
-    (modelOrObject?: Partial<QM>, options?: UpsertOptions): QueryBuilder<QM, QM>;
+  interface InsertGraphAndFetch<QM extends Model> {
+    (modelsOrObjects?: DeepPartialGraph<QM>[], options?: InsertGraphOptions): QueryBuilder<
+      QM,
+      QM[]
+    >;
+    (modelOrObject?: DeepPartialGraph<QM>, options?: InsertGraphOptions): QueryBuilder<QM, QM>;
   }
 
-  interface InsertGraphAndFetch<QM extends Model> {
-    (modelsOrObjects?: Partial<QM>[], options?: InsertGraphOptions): QueryBuilder<QM, QM[]>;
-    (modelOrObject?: Partial<QM>, options?: InsertGraphOptions): QueryBuilder<QM, QM>;
+  interface UpsertGraph<QM extends Model> {
+    (modelsOrObjects?: DeepPartialGraph<QM>[], options?: UpsertGraphOptions): QueryBuilder<
+      QM,
+      QM[]
+    >;
+    (modelOrObject?: DeepPartialGraph<QM>, options?: UpsertGraphOptions): QueryBuilder<QM, QM>;
+  }
+
+  interface UpsertGraphAndFetch<QM extends Model> {
+    (modelsOrObjects?: DeepPartialGraph<QM>[], options?: UpsertGraphOptions): QueryBuilder<
+      QM,
+      QM[]
+    >;
+    (modelOrObject?: DeepPartialGraph<QM>, options?: UpsertGraphOptions): QueryBuilder<QM, QM>;
   }
 
   type PartialUpdate<QM extends Model> = {
@@ -703,8 +746,8 @@ declare namespace Objection {
     patchAndFetchById(idOrIds: IdOrIds, modelOrObject: PartialUpdate<QM>): QueryBuilder<QM, QM>;
     patchAndFetch(modelOrObject: PartialUpdate<QM>): QueryBuilder<QM, QM>;
 
-    upsertGraph: Upsert<QM>;
-    upsertGraphAndFetch: Upsert<QM>;
+    upsertGraph: UpsertGraph<QM>;
+    upsertGraphAndFetch: UpsertGraphAndFetch<QM>;
 
     /**
      * @return a Promise of the number of deleted rows
@@ -851,6 +894,7 @@ declare namespace Objection {
     resultSize(): Promise<number>;
 
     page(page: number, pageSize: number): QueryBuilder<QM, Page<QM>>;
+    range(): QueryBuilder<QM, Page<QM>>;
     range(start: number, end: number): QueryBuilder<QM, Page<QM>>;
     pluck(propertyName: string): this;
     first(): QueryBuilderYieldingOneOrNone<QM>;
@@ -1027,6 +1071,12 @@ declare namespace Objection {
     whereNotBetween: WhereBetween<QM, RM, RV>;
     orWhereNotBetween: WhereBetween<QM, RM, RV>;
     andWhereNotBetween: WhereBetween<QM, RM, RV>;
+    whereColumn: Where<QM, RM, RV>;
+    andWhereColumn: Where<QM, RM, RV>;
+    orWhereColumn: Where<QM, RM, RV>;
+    whereNotColumn: Where<QM, RM, RV>;
+    andWhereNotColumn: Where<QM, RM, RV>;
+    orWhereNotColumn: Where<QM, RM, RV>;
 
     // Group by
     groupBy: GroupBy<QM, RM, RV>;
@@ -1039,6 +1089,7 @@ declare namespace Objection {
     // Union
     union: Union<QM>;
     unionAll(callback: () => void): this;
+    intersect(callback: () => void): this;
 
     // Having
     having: Where<QM, RM, RV>;
@@ -1104,7 +1155,9 @@ declare namespace Objection {
 
   interface Table<QM extends Model, RM, RV> {
     (tableName: TableName): QueryBuilder<QM, RM, RV>;
-    (callback: (queryBuilder: QueryBuilder<QM, QM[]>) => void): QueryBuilder<QM, RM, RV>;
+    (
+      callback: (this: QueryBuilder<QM, QM[]>, queryBuilder: QueryBuilder<QM, QM[]>) => void
+    ): QueryBuilder<QM, RM, RV>;
   }
 
   interface Distinct<QM extends Model, RM, RV> extends ColumnNamesMethod<QM, RM, RV> {}
@@ -1150,7 +1203,9 @@ declare namespace Objection {
   }
 
   interface Where<QM extends Model, RM, RV> extends WhereRaw<QM, RM, RV> {
-    (callback: (queryBuilder: QueryBuilder<QM, QM[]>) => void): QueryBuilder<QM, RM, RV>;
+    (
+      callback: (this: QueryBuilder<QM, QM[]>, queryBuilder: QueryBuilder<QM, QM[]>) => void
+    ): QueryBuilder<QM, RM, RV>;
     (object: object): QueryBuilder<QM, RM, RV>;
     (
       column: keyof QM | ColumnRef,
@@ -1169,7 +1224,9 @@ declare namespace Objection {
 
   interface FindOne<QM extends Model> {
     (condition: boolean): QueryBuilderYieldingOneOrNone<QM>;
-    (callback: (queryBuilder: QueryBuilder<QM, QM[]>) => void): QueryBuilderYieldingOneOrNone<QM>;
+    (
+      callback: (this: QueryBuilder<QM, QM[]>, queryBuilder: QueryBuilder<QM, QM[]>) => void
+    ): QueryBuilderYieldingOneOrNone<QM>;
     (object: object): QueryBuilderYieldingOneOrNone<QM>;
     (sql: string, ...bindings: any[]): QueryBuilderYieldingOneOrNone<QM>;
     (sql: string, bindings: any): QueryBuilderYieldingOneOrNone<QM>;
@@ -1230,9 +1287,17 @@ declare namespace Objection {
   }
 
   interface Union<QM extends Model> {
-    (callback: () => void, wrap?: boolean): QueryBuilder<QM, QM[]>;
-    (callbacks: (() => void)[], wrap?: boolean): QueryBuilder<QM, QM[]>;
-    (...callbacks: (() => void)[]): QueryBuilder<QM, QM[]>;
+    (
+      callback: (this: QueryBuilder<QM, QM[]>, queryBuilder: QueryBuilder<QM, QM[]>) => void,
+      wrap?: boolean
+    ): QueryBuilder<QM, QM[]>;
+    (
+      callbacks: ((this: QueryBuilder<QM, QM[]>, queryBuilder: QueryBuilder<QM, QM[]>) => void)[],
+      wrap?: boolean
+    ): QueryBuilder<QM, QM[]>;
+    (
+      ...callbacks: ((this: QueryBuilder<QM, QM[]>, queryBuilder: QueryBuilder<QM, QM[]>) => void)[]
+    ): QueryBuilder<QM, QM[]>;
   }
 
   // commons

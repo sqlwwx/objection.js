@@ -1,5 +1,5 @@
 const expect = require('expect.js');
-const Model = require('../../../').Model;
+const { Model } = require('../../../');
 
 module.exports = session => {
   describe('upsertGraph with compound key in relation #517', () => {
@@ -79,7 +79,7 @@ module.exports = session => {
       ];
 
       return Users.query()
-        .upsertGraph({ id: 1, preferences })
+        .upsertGraph({ id: 1, preferences }, { insertMissing: true })
         .then(() => {
           return Users.query()
             .eager('preferences')

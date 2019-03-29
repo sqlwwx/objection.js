@@ -1,9 +1,7 @@
 const _ = require('lodash');
 const knex = require('knex');
 const expect = require('expect.js');
-const Model = require('../../../').Model;
-const QueryBuilder = require('../../../').QueryBuilder;
-const ValidationError = require('../../../').ValidationError;
+const { Model, QueryBuilder, ValidationError } = require('../../../');
 
 describe('Model', () => {
   describe('fromJson', () => {
@@ -1360,6 +1358,98 @@ describe('Model', () => {
       });
     });
 
+    it('should pick a set of virtuals if array is passed to in `virtuals` option', () => {
+      class Model1 extends Model {
+        get foo() {
+          return this.a + this.b;
+        }
+
+        get bar() {
+          return this.a * this.b;
+        }
+
+        static get virtualAttributes() {
+          return ['foo'];
+        }
+      }
+
+      expect(
+        Model1.fromJson({
+          a: 100,
+          b: 10,
+          rel1: Model1.fromJson({ a: 101, b: 11 }),
+          rel2: [Model1.fromJson({ a: 102, b: 12 }), Model1.fromJson({ a: 103, b: 13 })]
+        }).$toJson({ virtuals: ['foo', 'bar'] })
+      ).to.eql({
+        a: 100,
+        b: 10,
+        foo: 110,
+        bar: 1000,
+
+        rel1: {
+          a: 101,
+          b: 11,
+          foo: 112,
+          bar: 1111
+        },
+
+        rel2: [{ a: 102, b: 12, foo: 114, bar: 1224 }, { a: 103, b: 13, foo: 116, bar: 1339 }]
+      });
+    });
+
+    it('should include virtualAttributes for related models', () => {
+      class Model1 extends modelClass('Model1') {
+        static get virtualAttributes() {
+          return ['foo'];
+        }
+
+        get foo() {
+          return 'foo';
+        }
+      }
+
+      class Model2 extends modelClass('Model2') {
+        static get virtualAttributes() {
+          return ['bar'];
+        }
+
+        static get relationMappings() {
+          return {
+            model1: {
+              relation: Model.BelongsToOneRelation,
+              modelClass: Model1,
+              join: {
+                from: 'Model2.model1Id',
+                to: 'Model1.id'
+              }
+            }
+          };
+        }
+
+        get bar() {
+          return 'bar';
+        }
+      }
+
+      let model2 = Model2.fromJson({
+        a: 'a',
+        model1: {
+          b: 'b',
+          c: 'c'
+        }
+      });
+
+      expect(model2.toJSON()).to.eql({
+        a: 'a',
+        bar: 'bar',
+        model1: {
+          b: 'b',
+          c: 'c',
+          foo: 'foo'
+        }
+      });
+    });
+
     it('should include methods', () => {
       class Model1 extends Model {
         foo() {
@@ -1382,10 +1472,15 @@ describe('Model', () => {
       });
     });
 
-    it('should not try to set readonly virtuals', () => {
+    it('should not try to set readonly properties', () => {
       class Model1 extends Model {
         get foo() {
           return this.a + this.b;
+        }
+
+        // Should ignore all getter-only properties. Not only virtual.
+        get notEvenVirtual() {
+          return 'imNotVirtual';
         }
 
         get bar() {
@@ -1405,15 +1500,16 @@ describe('Model', () => {
         }
       }
 
-      expect(
-        Model1.fromJson({
-          a: 10,
-          b: 100,
-          bar: 1000,
-          foo: 200,
-          baz: 300
-        }).toJSON()
-      ).to.eql({
+      const model = Model1.fromJson({
+        a: 10,
+        b: 100,
+        bar: 1000,
+        foo: 200,
+        baz: 300,
+        notEvenVirtual: 2000
+      });
+
+      expect(model.toJSON()).to.eql({
         a: 10,
         b: 100,
         c: 1000,
@@ -1421,6 +1517,83 @@ describe('Model', () => {
         bar: 1000,
         baz: 20
       });
+
+      expect(model.$toDatabaseJson()).to.eql({
+        a: 10,
+        b: 100,
+        c: 1000
+      });
+    });
+  });
+
+  describe('cloneObjectAttributes', () => {
+    it('should clone object attributes by default when calling $toJson or $toDatabaseJson', () => {
+      class Person extends Model {}
+
+      const obj = {
+        foo: {
+          bar: 1
+        }
+      };
+
+      const person = Person.fromDatabaseJson({
+        objectField: obj
+      });
+
+      expect(person.objectField).to.equal(obj);
+
+      let json = person.$toDatabaseJson();
+
+      expect(person.objectField).to.equal(obj);
+      expect(json.objectField).to.eql(obj);
+      expect(json.objectField).to.not.equal(obj);
+
+      json = person.$toJson();
+
+      expect(person.objectField).to.equal(obj);
+      expect(json.objectField).to.eql(obj);
+      expect(json.objectField).to.not.equal(obj);
+
+      json = person.toJSON();
+
+      expect(person.objectField).to.equal(obj);
+      expect(json.objectField).to.eql(obj);
+      expect(json.objectField).to.not.equal(obj);
+    });
+
+    it('should NOT clone object attributes when calling $toJson or $toDatabaseJson if Model.cloneObjectAttributes = false', () => {
+      class Person extends Model {
+        static get cloneObjectAttributes() {
+          return false;
+        }
+      }
+
+      const obj = {
+        foo: {
+          bar: 1
+        }
+      };
+
+      const person = Person.fromDatabaseJson({
+        objectField: obj
+      });
+
+      expect(person.objectField).to.equal(obj);
+
+      let json = person.$toDatabaseJson();
+
+      expect(person.objectField).to.equal(obj);
+      expect(json.objectField).to.equal(obj);
+
+      json = person.$toJson();
+
+      expect(person.objectField).to.equal(obj);
+      expect(json.objectField).to.equal(obj);
+
+      json = person.toJSON();
+
+      expect(person.objectField).to.equal(obj);
+      expect(json.objectField).to.equal(obj);
     });
   });
 
@@ -2126,6 +2299,191 @@ describe('Model', () => {
 
       expect(_.sortBy(model1Ids)).to.eql([1, 2, 3]);
       expect(_.sortBy(model2Ids)).to.eql(_.range(4, 26));
+    });
+  });
+
+  describe('traverseAsync() and $traverseAsync()', () => {
+    let Model1;
+    let Model2;
+    let model;
+
+    beforeEach(() => {
+      Model1 = modelClass('Model1');
+      Model2 = modelClass('Model2');
+
+      Model1.relationMappings = {
+        relation1: {
+          relation: Model.HasManyRelation,
+          modelClass: Model2,
+          join: {
+            from: 'Model1.id',
+            to: 'Model2.model1Id'
+          }
+        },
+        relation2: {
+          relation: Model.BelongsToOneRelation,
+          modelClass: Model1,
+          join: {
+            from: 'Model1.id',
+            to: 'Model1.model1Id'
+          }
+        }
+      };
+    });
+
+    beforeEach(() => {
+      model = Model1.fromJson({
+        id: 1,
+        model1Id: 2,
+        relation1: [{ id: 4, model1Id: 1 }, { id: 5, model1Id: 1 }],
+        relation2: {
+          id: 2,
+          model1Id: 3,
+          relation1: [{ id: 6, model1Id: 2 }, { id: 7, model1Id: 2 }],
+          relation2: {
+            id: 3,
+            model1Id: null,
+            relation1: [
+              { id: 8, model1Id: 3 },
+              { id: 9, model1Id: 3 },
+              { id: 10, model1Id: 3 },
+              { id: 11, model1Id: 3 },
+              { id: 12, model1Id: 3 },
+              { id: 13, model1Id: 3 },
+              { id: 14, model1Id: 3 },
+              { id: 15, model1Id: 3 },
+              { id: 16, model1Id: 3 },
+              { id: 17, model1Id: 3 },
+              { id: 18, model1Id: 3 },
+              { id: 19, model1Id: 3 },
+              { id: 20, model1Id: 3 },
+              { id: 21, model1Id: 3 },
+              { id: 22, model1Id: 3 },
+              { id: 23, model1Id: 3 },
+              { id: 24, model1Id: 3 },
+              { id: 25, model1Id: 3 }
+            ]
+          }
+        }
+      });
+    });
+
+    it('traverseAsync(modelArray, traverser) should traverse through the relation tree', () => {
+      let model1Ids = [];
+      let model2Ids = [];
+
+      return Model1.traverseAsync([model], model => {
+        return new Promise(resolve => {
+          setTimeout(() => {
+            if (model instanceof Model1) {
+              model1Ids.push(model.id);
+            } else if (model instanceof Model2) {
+              model2Ids.push(model.id);
+            }
+            resolve();
+          }, 5);
+        });
+      }).then(() => {
+        expect(_.sortBy(model1Ids)).to.eql([1, 2, 3]);
+        expect(_.sortBy(model2Ids)).to.eql(_.range(4, 26));
+      });
+    });
+
+    it('traverseAsync(singleModel, traverser) should traverse through the relation tree', () => {
+      let model1Ids = [];
+      let model2Ids = [];
+
+      return Model1.traverseAsync(model, model => {
+        return new Promise(resolve => {
+          setTimeout(() => {
+            if (model instanceof Model1) {
+              model1Ids.push(model.id);
+            } else if (model instanceof Model2) {
+              model2Ids.push(model.id);
+            }
+            resolve();
+          }, 5);
+        });
+      }).then(() => {
+        expect(_.sortBy(model1Ids)).to.eql([1, 2, 3]);
+        expect(_.sortBy(model2Ids)).to.eql(_.range(4, 26));
+      });
+    });
+
+    it('traverseAsync callback should be passed the model, its parent (if any) and the relation it is in (if any)', () => {
+      return Model1.traverseAsync([model], (model, parent, relationName) => {
+        if (model instanceof Model1) {
+          if (model.id === 1) {
+            expect(parent).to.equal(null);
+            expect(relationName).to.equal(null);
+          } else if (model.id === 2) {
+            expect(parent.id).to.equal(1);
+            expect(relationName).to.equal('relation2');
+          } else if (model.id === 3) {
+            expect(parent.id).to.equal(2);
+            expect(relationName).to.equal('relation2');
+          } else {
+            throw new Error('should never get here');
+          }
+        } else if (model instanceof Model2) {
+          if (model.id >= 4 && model.id <= 5) {
+            expect(parent).to.be.a(Model1);
+            expect(parent.id).to.equal(1);
+            expect(relationName).to.equal('relation1');
+          } else if (model.id >= 6 && model.id <= 7) {
+            expect(parent).to.be.a(Model1);
+            expect(parent.id).to.equal(2);
+            expect(relationName).to.equal('relation1');
+          } else if (model.id >= 8 && model.id <= 25) {
+            expect(parent).to.be.a(Model1);
+            expect(parent.id).to.equal(3);
+            expect(relationName).to.equal('relation1');
+          } else {
+            throw new Error('should never get here');
+          }
+        }
+      });
+    });
+
+    it('traverseAsync(ModelClass, model, traverser) should traverse through all ModelClass instances in the relation tree', () => {
+      let model1Ids = [];
+      let model2Ids = [];
+
+      return Model1.traverseAsync(Model2, model, model => {
+        model2Ids.push(model.id);
+      })
+        .then(() => {
+          return Model1.traverseAsync(Model1, model, model => {
+            model1Ids.push(model.id);
+          });
+        })
+        .then(() => {
+          expect(_.sortBy(model1Ids)).to.eql([1, 2, 3]);
+          expect(_.sortBy(model2Ids)).to.eql(_.range(4, 26));
+        });
+    });
+
+    it('$traverseAsync(traverser) should traverse through the relation tree', () => {
+      let model1Ids = [];
+      let model2Ids = [];
+
+      return model
+        .$traverseAsync(model => {
+          return new Promise(resolve => {
+            setTimeout(() => {
+              if (model instanceof Model1) {
+                model1Ids.push(model.id);
+              } else if (model instanceof Model2) {
+                model2Ids.push(model.id);
+              }
+              resolve();
+            }, 5);
+          });
+        })
+        .then(() => {
+          expect(_.sortBy(model1Ids)).to.eql([1, 2, 3]);
+          expect(_.sortBy(model2Ids)).to.eql(_.range(4, 26));
+        });
     });
   });
 

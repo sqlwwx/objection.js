@@ -1,3 +1,4 @@
+const chai = require('chai');
 const expect = require('expect.js');
 const { RelationExpression } = require('../../../');
 
@@ -883,6 +884,40 @@ describe('RelationExpression', () => {
     });
   });
 
+  it('clone', () => {
+    testClone('[aaa as a . bbb as b.^, c(f)]', {
+      $name: null,
+      $relation: null,
+      $modify: [],
+      $recursive: false,
+      $allRecursive: false,
+
+      a: {
+        $name: 'a',
+        $relation: 'aaa',
+        $modify: [],
+        $recursive: false,
+        $allRecursive: false,
+
+        b: {
+          $name: 'b',
+          $relation: 'bbb',
+          $modify: [],
+          $recursive: true,
+          $allRecursive: false
+        }
+      },
+
+      c: {
+        $name: 'c',
+        $relation: 'c',
+        $modify: ['f'],
+        $recursive: false,
+        $allRecursive: false
+      }
+    });
+  });
+
   describe('#expressionsAtPath', () => {
     it('a from a', () => {
       testPath('a', 'a', [
@@ -1080,113 +1115,6 @@ describe('RelationExpression', () => {
     testToString('[a.*, b.c.^]');
   });
 
-  describe('#toJSON', () => {
-    testToJSON('a', {
-      a: true
-    });
-
-    testToJSON('a.b', {
-      a: {
-        b: true
-      }
-    });
-
-    testToJSON('a as b.b as c', {
-      b: {
-        $relation: 'a',
-        c: {
-          $relation: 'b'
-        }
-      }
-    });
-
-    testToJSON('a as b.[b as c, d as e]', {
-      b: {
-        $relation: 'a',
-        c: {
-          $relation: 'b'
-        },
-        e: {
-          $relation: 'd'
-        }
-      }
-    });
-
-    testToJSON('a.[b, c]', {
-      a: {
-        b: true,
-        c: true
-      }
-    });
-
-    testToJSON('a.[b, c.d]', {
-      a: {
-        b: true,
-        c: {
-          d: true
-        }
-      }
-    });
-
-    testToJSON('[a, b]', {
-      a: true,
-      b: true
-    });
-
-    testToJSON('[a(f1, f2), b]', {
-      a: {
-        $modify: ['f1', 'f2']
-      },
-      b: true
-    });
-
-    testToJSON('[a.[b, c], d.e.f.[g, h.i]]', {
-      a: {
-        b: true,
-        c: true
-      },
-      d: {
-        e: {
-          f: {
-            g: true,
-            h: {
-              i: true
-            }
-          }
-        }
-      }
-    });
-
-    testToJSON('a.*', {
-      a: {
-        $allRecursive: true
-      }
-    });
-
-    testToJSON('a.^', {
-      a: {
-        $recursive: true
-      }
-    });
-
-    testToJSON('a.^3', {
-      a: {
-        $recursive: 3
-      }
-    });
-
-    testToJSON('[a.*, b.c.^]', {
-      a: {
-        $allRecursive: true
-      },
-      b: {
-        c: {
-          $recursive: true
-        }
-      }
-    });
-  });
-
   describe('#isSubExpression', () => {
     testSubExpression('*', 'a');
     testSubExpression('*', '[a, b]');
@@ -1301,8 +1229,18 @@ describe('RelationExpression', () => {
       const expr = RelationExpression.create('[a, b.c, d]');
       const items = [];
 
-      expr.forEachChildExpression({ a: 'aa', b: 'bb', d: 'dd' }, (expr, relation) => {
-        items.push({ exprName: expr.$name, relation });
+      const fakeModel = {
+        getRelationNames() {
+          return ['a', 'b', 'd'];
+        },
+
+        getRelationUnsafe(name) {
+          return name + name;
+        }
+      };
+
+      expr.forEachChildExpression(fakeModel, (expr, relation) => {
+        items.push({ exprName: expr.node.$name, relation });
       });
 
       expect(items).to.eql([
@@ -1316,14 +1254,24 @@ describe('RelationExpression', () => {
       const expr = RelationExpression.create('a.^');
       const items = [];
 
-      expr.forEachChildExpression({ a: 'aa' }, (expr, relation) => {
-        items.push({ exprName: expr.$name, relation });
+      const fakeModel = {
+        getRelationNames() {
+          return ['a'];
+        },
 
-        expr.forEachChildExpression({ a: 'aa' }, (expr, relation) => {
-          items.push({ exprName: expr.$name, relation });
+        getRelationUnsafe(name) {
+          return name + name;
+        }
+      };
 
-          expr.forEachChildExpression({ a: 'aa' }, (expr, relation) => {
-            items.push({ exprName: expr.$name, relation });
+      expr.forEachChildExpression(fakeModel, (expr, relation) => {
+        items.push({ exprName: expr.node.$name, relation });
+
+        expr.forEachChildExpression(fakeModel, (expr, relation) => {
+          items.push({ exprName: expr.node.$name, relation });
+
+          expr.forEachChildExpression(fakeModel, (expr, relation) => {
+            items.push({ exprName: expr.node.$name, relation });
           });
         });
       });
@@ -1339,14 +1287,24 @@ describe('RelationExpression', () => {
       const expr = RelationExpression.create('a.^2');
       const items = [];
 
-      expr.forEachChildExpression({ a: 'aa' }, (expr, relation) => {
-        items.push({ exprName: expr.$name, relation });
+      const fakeModel = {
+        getRelationNames() {
+          return ['a'];
+        },
 
-        expr.forEachChildExpression({ a: 'aa' }, (expr, relation) => {
-          items.push({ exprName: expr.$name, relation });
+        getRelationUnsafe(name) {
+          return name + name;
+        }
+      };
 
-          expr.forEachChildExpression({ a: 'aa' }, (expr, relation) => {
-            items.push({ exprName: expr.$name, relation });
+      expr.forEachChildExpression(fakeModel, (expr, relation) => {
+        items.push({ exprName: expr.node.$name, relation });
+
+        expr.forEachChildExpression(fakeModel, (expr, relation) => {
+          items.push({ exprName: expr.node.$name, relation });
+
+          expr.forEachChildExpression(fakeModel, (expr, relation) => {
+            items.push({ exprName: expr.node.$name, relation });
           });
         });
       });
@@ -1358,11 +1316,31 @@ describe('RelationExpression', () => {
       const expr = RelationExpression.create('a.*');
       const items = [];
 
-      expr.forEachChildExpression({ a: 'aa' }, (expr, relation) => {
-        items.push({ exprName: expr.$name, relation });
+      const fakeModel1 = {
+        getRelationNames() {
+          return ['a'];
+        },
 
-        expr.forEachChildExpression({ b: 'bb', c: 'cc', d: 'dd' }, (expr, relation) => {
-          items.push({ exprName: expr.$name, relation });
+        getRelationUnsafe(name) {
+          return name + name;
+        }
+      };
+
+      const fakeModel2 = {
+        getRelationNames() {
+          return ['b', 'c', 'd'];
+        },
+
+        getRelationUnsafe(name) {
+          return name + name;
+        }
+      };
+
+      expr.forEachChildExpression(fakeModel1, (expr, relation) => {
+        items.push({ exprName: expr.node.$name, relation });
+
+        expr.forEachChildExpression(fakeModel2, (expr, relation) => {
+          items.push({ exprName: expr.node.$name, relation });
         });
       });
 
@@ -1376,7 +1354,11 @@ describe('RelationExpression', () => {
   });
 
   function testParse(str, parsed) {
-    expect(RelationExpression.create(str)).to.eql(parsed);
+    chai.expect(RelationExpression.create(str).node).to.containSubset(parsed);
+  }
+
+  function testClone(expr, cloned) {
+    chai.expect(RelationExpression.create(expr).clone().node).to.containSubset(cloned);
   }
 
   function testMerge(str1, str2, parsed) {
@@ -1395,7 +1377,13 @@ describe('RelationExpression', () => {
   }
 
   function testPath(str, path, expected) {
-    expect(RelationExpression.create(str).expressionsAtPath(path)).to.eql(expected);
+    chai
+      .expect(
+        RelationExpression.create(str)
+          .expressionsAtPath(path)
+          .map(it => it.node)
+      )
+      .to.containSubset(expected);
   }
 
   function testToString(str) {

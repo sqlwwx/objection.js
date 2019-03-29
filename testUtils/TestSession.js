@@ -44,6 +44,7 @@ class TestSession {
 
       static get namedFilters() {
         return {
+          'orderById': builder => builder.orderBy('Model1.id'),
           'select:id': builder => builder.select(this.ref('id')),
           'select:model1Prop1': builder => builder.select('model1Prop1'),
           'select:model1Prop1Aliased': builder => builder.select('model1Prop1 as aliasedInFilter'),
@@ -112,6 +113,12 @@ class TestSession {
         return snakeCaseMappers();
       }
 
+      static get modifiers() {
+        return {
+          orderById: builder => builder.orderBy('model2.id_col')
+        };
+      }
+
       static get relationMappings() {
         return {
           model2Relation1: {
@@ -165,6 +172,16 @@ class TestSession {
 
       static get idColumn() {
         return 'id';
+      }
+
+      static get jsonAttributes() {
+        return ['model3JsonProp'];
+      }
+
+      static get modifiers() {
+        return {
+          orderById: builder => builder.orderBy('model3.id')
+        };
       }
     }
 
@@ -225,6 +242,7 @@ class TestSession {
           .createTable('model3', table => {
             table.increments('id').primary();
             table.string('model3Prop1');
+            table.text('model3JsonProp');
           })
           .createTable('Model1Model2', table => {
             table.increments('id').primary();

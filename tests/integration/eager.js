@@ -1,7 +1,8 @@
 const _ = require('lodash');
+const chai = require('chai');
 const expect = require('expect.js');
 const Promise = require('bluebird');
-const ValidationError = require('../../').ValidationError;
+const { ValidationError, raw } = require('../../');
 const mockKnexFactory = require('../../testUtils/mockKnex');
 
 module.exports = session => {
@@ -315,6 +316,41 @@ module.exports = session => {
         }
       ]);
     });
+
+    test(
+      {
+        aliased1: {
+          $relation: 'model1Relation1',
+          $recursive: 2
+        }
+      },
+      models => {
+        expect(models).to.eql([
+          {
+            id: 1,
+            model1Id: 2,
+            model1Prop1: 'hello 1',
+            model1Prop2: null,
+            $afterGetCalled: 1,
+
+            aliased1: {
+              id: 2,
+              model1Id: 3,
+              model1Prop1: 'hello 2',
+              model1Prop2: null,
+              $afterGetCalled: 1,
+              aliased1: {
+                id: 3,
+                model1Id: 4,
+                model1Prop1: 'hello 3',
+                model1Prop2: null,
+                $afterGetCalled: 1
+              }
+            }
+          }
+        ]);
+      }
+    );
 
     test(
       'model1Relation1(selectId).^',
@@ -852,7 +888,7 @@ module.exports = session => {
         .findById(1)
         .joinEager('model1Relation1')
         .modify(builder => {
-          expect(builder.eagerOperationFactory()).to.equal(Model1.JoinEagerAlgorithm);
+          expect(builder.findOperation('eager').constructor.name).to.equal('JoinEagerOperation');
         })
         .then(model => {
           expect(model).to.eql({
@@ -890,7 +926,7 @@ module.exports = session => {
         .findById(1)
         .mergeJoinEager('model1Relation1')
         .modify(builder => {
-          expect(builder.eagerOperationFactory()).to.equal(Model1.JoinEagerAlgorithm);
+          expect(builder.findOperation('eager').constructor.name).to.equal('JoinEagerOperation');
         })
         .then(model => {
           expect(model).to.eql({
@@ -915,7 +951,7 @@ module.exports = session => {
         .findById(1)
         .naiveEager('model1Relation1')
         .modify(builder => {
-          expect(builder.eagerOperationFactory()).to.equal(Model1.NaiveEagerAlgorithm);
+          expect(builder.findOperation('eager').constructor.name).to.equal('NaiveEagerOperation');
         })
         .then(model => {
           expect(model).to.eql({
@@ -940,7 +976,7 @@ module.exports = session => {
         .findById(1)
         .mergeNaiveEager('model1Relation1')
         .modify(builder => {
-          expect(builder.eagerOperationFactory()).to.equal(Model1.NaiveEagerAlgorithm);
+          expect(builder.findOperation('eager').constructor.name).to.equal('NaiveEagerOperation');
         })
         .then(model => {
           expect(model).to.eql({
@@ -1115,6 +1151,62 @@ module.exports = session => {
         });
     });
 
+    it('eager should not blow up');
+
+    it('should be able to call eager from runBefore hook', () => {
+      return Model1.query()
+        .runBefore((_, builder) => {
+          builder.eager('model1Relation1');
+        })
+        .findOne({ model1Prop1: 'hello 1' })
+        .then(result => {
+          chai.expect(result).to.containSubset({
+            model1Prop1: 'hello 1',
+
+            model1Relation1: {
+              model1Prop1: 'hello 2'
+            }
+          });
+        });
+    });
+
+    it('should be able to call joinEager from runBefore hook', () => {
+      return Model1.query()
+        .runBefore((_, builder) => {
+          builder.joinEager('model1Relation1');
+        })
+        .where('Model1.model1Prop1', 'hello 1')
+        .first()
+        .then(result => {
+          chai.expect(result).to.containSubset({
+            model1Prop1: 'hello 1',
+
+            model1Relation1: {
+              model1Prop1: 'hello 2'
+            }
+          });
+        });
+    });
+
+    it('eager should not blow up with an empty eager operation', () => {
+      return Model1.query()
+        .modifyEager('foo', () => {})
+        .findOne({ model1Prop1: 'hello 1' })
+        .then(result => {
+          expect(result.model1Prop1).to.equal('hello 1');
+        });
+    });
+
+    it('joinEager should not blow up with an empty eager operation', () => {
+      return Model1.query()
+        .eagerAlgorithm(Model1.JoinEagerAlgorithm)
+        .modifyEager('foo', () => {})
+        .findOne({ model1Prop1: 'hello 1' })
+        .then(result => {
+          expect(result.model1Prop1).to.equal('hello 1');
+        });
+    });
+
     // TODO: enable for v2.0.
     it.skip('should fail with a clear error when a duplicate relation is detected', () => {
       expect(() => {
@@ -1174,6 +1266,112 @@ module.exports = session => {
             ]);
           });
       });
+
+      // Disabled for sqlite because it doesn't have `concat` function :)
+      if (!session.isSqlite()) {
+        it('select * + raw should work', () => {
+          return Model1.query()
+            .select(
+              'Model1.*',
+              raw(`concat(??, ' - ', ??) as "rawThingy"`, 'Model1.model1Prop1', 'Model1.id')
+            )
+            .where('Model1.id', 1)
+            .where('model1Relation2.id_col', 2)
+            .where('model1Relation2:model2Relation1.id', 6)
+            .eager('[model1Relation1, model1Relation2.model2Relation1]')
+            .eagerAlgorithm(Model1.JoinEagerAlgorithm)
+            .then(models => {
+              expect(models).to.eql([
+                {
+                  id: 1,
+                  model1Prop1: 'hello 1',
+                  model1Prop2: null,
+                  model1Id: 2,
+                  rawThingy: 'hello 1 - 1',
+                  $afterGetCalled: 1,
+
+                  model1Relation1: {
+                    id: 2,
+                    model1Id: 3,
+                    model1Prop1: 'hello 2',
+                    model1Prop2: null,
+                    $afterGetCalled: 1
+                  },
+
+                  model1Relation2: [
+                    {
+                      idCol: 2,
+                      model1Id: 1,
+                      model2Prop1: 'hejsan 2',
+                      model2Prop2: null,
+                      $afterGetCalled: 1,
+
+                      model2Relation1: [
+                        {
+                          id: 6,
+                          model1Id: 7,
+                          model1Prop1: 'hello 6',
+                          model1Prop2: null,
+                          aliasedExtra: 'extra 6',
+                          $afterGetCalled: 1
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]);
+            });
+        });
+
+        it('raw select should work in modifier', () => {
+          return Model1.query()
+            .select('Model1.id')
+            .where('Model1.id', 1)
+            .where('model1Relation2.id_col', 2)
+            .where('model1Relation2:model2Relation1.id', 6)
+            .joinEager('[model1Relation1(rawStuff), model1Relation2.model2Relation1]', {
+              rawStuff(builder) {
+                builder.select(
+                  raw(`concat(??, ' - ', ?? * 2)`, 'model1Prop1', 'id').as('rawThingy')
+                );
+              }
+            })
+            .then(models => {
+              expect(models).to.eql([
+                {
+                  id: 1,
+                  $afterGetCalled: 1,
+
+                  model1Relation1: {
+                    rawThingy: 'hello 2 - 4',
+                    $afterGetCalled: 1
+                  },
+
+                  model1Relation2: [
+                    {
+                      idCol: 2,
+                      model1Id: 1,
+                      model2Prop1: 'hejsan 2',
+                      model2Prop2: null,
+                      $afterGetCalled: 1,
+
+                      model2Relation1: [
+                        {
+                          id: 6,
+                          model1Id: 7,
+                          model1Prop1: 'hello 6',
+                          model1Prop2: null,
+                          aliasedExtra: 'extra 6',
+                          $afterGetCalled: 1
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]);
+            });
+        });
+      }
 
       it('select should work with alias', () => {
         return Model1.query()
@@ -2443,6 +2641,84 @@ module.exports = session => {
       });
     });
 
+    describe('Same ManyToMany child for multiple parents + extras', () => {
+      beforeEach(() => {
+        return Model2.query().insertGraph([
+          {
+            idCol: 100,
+            model2Prop1: 'hejsan 1',
+
+            model2Relation1: [
+              {
+                id: 500,
+                model1Prop1: 'hello 5'
+              },
+              {
+                '#id': 'shared',
+                id: 600,
+                model1Prop1: 'hello 6',
+                aliasedExtra: 'lol1'
+              }
+            ]
+          },
+          {
+            idCol: 200,
+            model2Prop1: 'hejsan 2',
+
+            model2Relation1: [
+              {
+                '#ref': 'shared',
+                aliasedExtra: 'lol2'
+              },
+              {
+                id: 700,
+                model1Prop1: 'hello 7'
+              }
+            ]
+          }
+        ]);
+      });
+
+      it('test', () => {
+        return Model2.query()
+          .whereIn('id_col', [100, 200])
+          .orderBy('id_col')
+          .eager('model2Relation1(orderById)')
+          .then(result => {
+            chai.expect(result).to.containSubset([
+              {
+                idCol: 100,
+
+                model2Relation1: [
+                  {
+                    id: 500,
+                    aliasedExtra: null
+                  },
+                  {
+                    id: 600,
+                    aliasedExtra: 'lol1'
+                  }
+                ]
+              },
+              {
+                idCol: 200,
+
+                model2Relation1: [
+                  {
+                    id: 600,
+                    aliasedExtra: 'lol2'
+                  },
+                  {
+                    id: 700,
+                    aliasedExtra: null
+                  }
+                ]
+              }
+            ]);
+          });
+      });
+    });
+
     describe('aliases', () => {
       it('aliases in eager expressions should work', () => {
         return Promise.map(
@@ -2677,10 +2953,10 @@ module.exports = session => {
               expect(_.last(sql).replace(/\s/g, '')).to.equal(
                 `
                 select
-                  "Model1"."id" as "id",
-                  "Model1"."model1Id" as "model1Id",
-                  "Model1"."model1Prop1" as "model1Prop1",
-                  "Model1"."model1Prop2" as "model1Prop2",
+                  "Model1"."id",
+                  "Model1"."model1Id",
+                  "Model1"."model1Prop1",
+                  "Model1"."model1Prop2",
                   "model1Relation1"."id" as "model1Relation1:id",
                   "model1Relation1"."model1Id" as "model1Relation1:model1Id",
                   "model1Relation1"."model1Prop1" as "model1Relation1:model1Prop1",
