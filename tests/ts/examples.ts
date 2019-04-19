@@ -94,6 +94,14 @@ class Person extends objection.Model {
     const itemMessage: string = errorItem.message;
     return new CustomValidationError('my custom error: ' + message + ' ' + itemMessage);
   }
+
+  static get modifiers() {
+    return {
+      myFilter(builder: objection.QueryBuilder<Person>) {
+        return builder.orderBy('date');
+      }
+    };
+  }
 }
 
 function takesModelSubclass<M extends objection.Model>(m: M) {}
@@ -513,7 +521,9 @@ const children: Promise<Person[]> = Person.query()
 const childrenAndPets: Promise<Person[]> = Person.query()
   .eager('children')
   .where('age', '>=', 42)
-  .modifyEager('[pets, children.pets]', qb => qb.orderBy('name'));
+  .modifyEager('[pets, children.pets]', qb => qb.orderBy('name'))
+  .modifyEager('[pets, children.pets]', 'orderByName')
+  .modifyEager('[pets, children.pets]', ['orderByName', 'orderBySomethingElse']);
 
 const rowsPage: Promise<{
   total: number;

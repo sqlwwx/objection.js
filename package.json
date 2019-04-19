@@ -1,6 +1,6 @@
 {
   "name": "objection",
-  "version": "1.6.6",
+  "version": "1.6.8",
   "description": "An SQL-friendly ORM for Node.js",
   "main": "lib/objection.js",
   "license": "MIT",
@@ -17,18 +17,20 @@
     "perf-debug": "mocha --slow 60000 --timeout 60000 --reporter spec --inspect-brk perf",
     "perf-opt": "mocha --slow 60000 --timeout 60000 --reporter spec --recursive perf --trace_opt --trace_deopt",
     "prettier": "prettier --write \"{examples,lib,tests,typings}/**/*.{js,ts}\"",
-    "eslint": "eslint --format codeframe \"examples/**/*.js\" \"lib/**/*.js\" \"tests/**/*.js\""
+    "eslint": "eslint --format codeframe \"examples/**/*.js\" \"lib/**/*.js\" \"tests/**/*.js\"",
+    "docs:dev": "vuepress dev doc",
+    "docs:build": "vuepress build doc"
   },
   "publishConfig": {
     "tag": "next"
   },
   "author": {
     "name": "Sami Koskimäki",
-    "email": "sami.koskimaki@vincit.com",
+    "email": "sami@jakso.me",
     "url": "https://github.com/koskimas"
   },
   "contributors": [
-    "Sami Koskimäki <sami.koskimaki@vincit.com> (https://github.com/koskimas)",
+    "Sami Koskimäki <sami@jakso.me> (https://github.com/koskimas)",
     "Mikael Lepistö <mikael.lepisto@vincit.com> (https://github.com/elhigu)",
     "Matthew McEachen <matthew-objection@photostructure.com> (https://github.com/mceachen)",
     "Jürg Lehni <juerg@scratchdisk.com> (https://github.com/lehni)",
@@ -85,8 +87,9 @@
     "nyc": "^13.3.0",
     "pg": "^7.6.1",
     "prettier": "1.13.6",
-    "sqlite3": "^4.0.4",
-    "typescript": "^2.9.2"
+    "sqlite3": "^4.0.0",
+    "typescript": "^3.3.3",
+    "vuepress": "0.14.10"
   },
   "nyc": {
     "description": "test coverage",
