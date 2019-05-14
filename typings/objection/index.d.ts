@@ -110,6 +110,7 @@ declare namespace Objection {
   export interface ModelOptions {
     patch?: boolean;
     skipValidation?: boolean;
+    old?: object;
   }
 
   export interface ValidatorContext {
@@ -801,7 +802,7 @@ declare namespace Objection {
       operator: string,
       value: Value[] | QueryBuilder<any, any[]>
     ): this;
-    whereInComposite(column: ColumnRef, values: Value[] | QueryBuilder<any, any[]>): this;
+    whereInComposite(column: ColumnRef | ColumnRef[], values: Value[] | QueryBuilder<any, any[]>): this;
 
     whereJsonSupersetOf: WhereJson<QM, RM, RV>;
     orWhereJsonSupersetOf: WhereJson<QM, RM, RV>;
@@ -886,7 +887,7 @@ declare namespace Objection {
 
     skipUndefined(): this;
 
-    transacting(transation: Transaction): this;
+    transacting(transaction: Transaction): this;
 
     clone(): this;
 
@@ -910,6 +911,7 @@ declare namespace Objection {
     first(): QueryBuilderYieldingOneOrNone<QM>;
 
     alias(alias: string): this;
+    aliasFor(modelClassOrTableName: string | ModelClass<any>, alias:string): this;
     tableRefFor(modelClass: ModelClass<any>): string;
     tableNameFor(modelClass: ModelClass<any>): string;
 
@@ -1126,6 +1128,7 @@ declare namespace Objection {
 
     // Clear
     clearSelect(): this;
+    clearOrder(): this;
     clearWhere(): this;
 
     // Paging
@@ -1268,12 +1271,12 @@ declare namespace Objection {
   }
 
   interface WhereIn<QM extends Model, RM, RV> {
-    (column: ColumnRef, values: Value[]): QueryBuilder<QM, RM, RV>;
+    (column: ColumnRef | ColumnRef[], values: Value[]): QueryBuilder<QM, RM, RV>;
     (
-      column: ColumnRef,
+      column: ColumnRef | ColumnRef[],
       callback: (this: QueryBuilder<QM, QM[]>, queryBuilder: QueryBuilder<QM, QM[]>) => void
     ): QueryBuilder<QM, RM, RV>;
-    (column: ColumnRef, query: QueryBuilder<any, any[]>): QueryBuilder<QM, RM, RV>;
+    (column: ColumnRef | ColumnRef[], query: QueryBuilder<any, any[]>): QueryBuilder<QM, RM, RV>;
   }
 
   interface WhereBetween<QM extends Model, RM, RV> {
