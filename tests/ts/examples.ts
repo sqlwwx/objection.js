@@ -170,6 +170,55 @@ async () => {
   takesMaybePerson(await Person.query().findOne({ lastName }));
 };
 
+// union/unionAll types
+
+async () => {
+  await Person.query()
+    .where({ lastName: 'finnigan' })
+    .union(
+      // supports callbacks, or querybuilders along-side each other.
+      Person.query().where({ lastName: 'doe' }),
+      qb => qb.table(Person.tableName).where({ lastName: 'black' })
+    );
+  await Person.query()
+    .where({ lastName: 'finnigan' })
+    .union(
+      // multiple query builders
+      Person.query().where({ lastName: 'doe' }),
+      Person.query().where({ lastName: 'black' })
+    );
+  await Person.query()
+    .where({ lastName: 'finnigan' })
+    .union(
+      // supports callbacks, or querybuilders along-side each other.
+      qb => qb.table(Person.tableName).where({ lastName: 'doe' }),
+      qb => qb.table(Person.tableName).where({ lastName: 'black' })
+    );
+  // checks for unions that include wrap options
+  await Person.query()
+    .where({ lastName: 'finnigan' })
+    .union(
+      [
+        qb => qb.table(Person.tableName).where({ lastName: 'doe' }),
+        qb => qb.table(Person.tableName).where({ lastName: 'black' })
+      ],
+      true
+    );
+  await Person.query()
+    .where({ lastName: 'finnigan' })
+    .union(qb => qb.table(Person.tableName).where({ lastName: 'black' }), true);
+  await Person.query()
+    .where({ lastName: 'finnigan' })
+    .union(
+      // allows `wrap` to be passed as the last argument alongside
+      // other forms of unions. supports up to 7 union args before wrap arg.
+      Person.query().where({ lastName: 'doe' }),
+      qb => qb.table(Person.tableName).where({ lastName: 'doe' }),
+      qb => qb.table(Person.tableName).where({ lastName: 'black' }),
+      true
+    );
+};
+
 // .query().castTo()
 async () => {
   const animals = await Person.query()
@@ -885,6 +934,13 @@ const whereDelRetFirstWhere: Promise<Person | undefined> = qb
   .returning('lastName')
   .first()
   .where({ firstName: 'Mo' });
+
+const orderByColumn: Promise<Person[]> = qb.orderBy('firstName', 'asc');
+const orderByColumns: Promise<Person[]> = qb.orderBy([
+  'email',
+  { column: 'firstName', order: 'asc' },
+  { column: 'lastName' }
+]);
 
 // Verify that Model.query() and model.$query() return the same type of query builder.
 // Confirming this prevent us from having to duplicate the tests for each.
