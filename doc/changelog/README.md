@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.6.11
+
+  * Fixes [#1471](https://github.com/Vincit/objection.js/issues/1471)
+  * Fixes [#1470](https://github.com/Vincit/objection.js/issues/1470)
+  * Fixes [#1364](https://github.com/Vincit/objection.js/issues/1364)
+  * Fixes [#1458](https://github.com/Vincit/objection.js/issues/1458)
+  * Fixes [#1467](https://github.com/Vincit/objection.js/issues/1467)
+
+## 1.6.10
+
+  * Fixes [#1455](https://github.com/Vincit/objection.js/issues/1455)
+
 ## 1.6.9
 
   * Revert fix for [#1089](https://github.com/Vincit/objection.js/issues/1089). It was causing more bugs than it fixed. #1089 will be addressed in 2.0.

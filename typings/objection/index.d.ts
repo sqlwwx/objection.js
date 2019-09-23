@@ -347,7 +347,7 @@ declare namespace Objection {
   }
 
   interface JoinRelation {
-    <QM extends Model>(relationName: string, opt?: RelationOptions): QueryBuilder<QM, QM[]>;
+    <QM extends Model>(expr: RelationExpression, opt?: RelationOptions): QueryBuilder<QM, QM[]>;
   }
 
   type JsonObjectOrFieldExpression = object | object[] | FieldExpression;
@@ -722,7 +722,7 @@ declare namespace Objection {
   }
 
   type PartialUpdate<QM extends Model> = {
-    [P in keyof QM]?: QM[P] | Raw | Reference | QueryBuilder<any, any[]>
+    [P in keyof QM]?: QM[P] | Raw | Reference | QueryBuilder<any, any[]>;
   };
 
   interface QueryBuilderBase<QM extends Model, RM, RV> extends QueryInterface<QM, RM, RV> {
@@ -1556,7 +1556,7 @@ declare namespace Objection {
      */
     type?: string | string[];
     /**
-     * fallback raw string for custom formats, 
+     * fallback raw string for custom formats,
      * or formats that aren't in the standard yet
      */
     format?: JsonSchemaFormatType | string;

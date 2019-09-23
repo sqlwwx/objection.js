@@ -1123,6 +1123,71 @@ module.exports = session => {
             });
         });
 
+        it('should patch a related object with extras using patchAndFetchById', () => {
+          return Model1.query()
+            .findById(1)
+            .then(parent => {
+              return parent.$relatedQuery('model1Relation3').patchAndFetchById(4, {
+                model2Prop1: 'iam updated',
+                extra1: 'updated extra 1',
+                // Test query properties. sqlite doesn't have `concat` function. Use a literal for it.
+                extra2: isSqlite(session.knex)
+                  ? 'updated extra 2'
+                  : raw(`CONCAT('updated extra ', '2')`)
+              });
+            })
+            .then(result => {
+              chai.expect(result).to.containSubset({
+                model2Prop1: 'iam updated',
+                extra1: 'updated extra 1',
+                extra2: 'updated extra 2',
+                idCol: 4
+              });
+
+              return Model1.query()
+                .findById(1)
+                .eager('model1Relation3');
+            })
+            .then(model1 => {
+              chai.expect(model1).to.containSubset({
+                id: 1,
+                model1Id: null,
+                model1Prop1: 'hello 1',
+                model1Prop2: null,
+                model1Relation3: [
+                  {
+                    idCol: 5,
+                    model1Id: null,
+                    model2Prop1: 'foo 3',
+                    model2Prop2: null,
+                    extra1: 'extra 13',
+                    extra2: 'extra 23',
+                    $afterGetCalled: 1
+                  },
+                  {
+                    idCol: 4,
+                    model1Id: null,
+                    model2Prop1: 'iam updated',
+                    model2Prop2: null,
+                    extra1: 'updated extra 1',
+                    extra2: 'updated extra 2',
+                    $afterGetCalled: 1
+                  },
+                  {
+                    idCol: 3,
+                    model1Id: null,
+                    model2Prop1: 'foo 1',
+                    model2Prop2: null,
+                    extra1: 'extra 11',
+                    extra2: 'extra 21',
+                    $afterGetCalled: 1
+                  }
+                ],
+                $afterGetCalled: 1
+              });
+            });
+        });
+
         it('should patch a related object with extras', () => {
           return Model1.query()
             .findById(1)

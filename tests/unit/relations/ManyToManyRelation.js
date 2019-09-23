@@ -3,7 +3,7 @@ const Knex = require('knex');
 const expect = require('expect.js');
 const Promise = require('bluebird');
 const objection = require('../../../');
-const classUtils = require('../../../lib/utils/classUtils');
+const { isFunction } = require('../../../lib/utils/objectUtils');
 const knexMocker = require('../../../testUtils/mockKnex');
 
 const Model = objection.Model;
@@ -140,7 +140,7 @@ describe('ManyToManyRelation', () => {
     expect(relation.joinTable).to.equal('JoinModel');
     expect(relation.joinTableOwnerProp.cols).to.eql(['ownerId']);
     expect(relation.joinTableRelatedProp.props).to.eql(['relatedId']);
-    expect(classUtils.isSubclassOf(relation.joinModelClass, JoinModel)).to.equal(true);
+    expect(isSubclassOf(relation.joinModelClass, JoinModel)).to.equal(true);
   });
 
   it('should accept an absolute file path to a join model in join.through object', () => {
@@ -163,9 +163,7 @@ describe('ManyToManyRelation', () => {
     expect(relation.joinTable).to.equal('JoinModel');
     expect(relation.joinTableOwnerProp.cols).to.eql(['ownerId']);
     expect(relation.joinTableRelatedProp.cols).to.eql(['relatedId']);
-    expect(classUtils.isSubclassOf(relation.joinModelClass, require('./files/JoinModel'))).to.equal(
-      true
-    );
+    expect(isSubclassOf(relation.joinModelClass, require('./files/JoinModel'))).to.equal(true);
   });
 
   it('should accept a composite keys in join.through object (1)', () => {
@@ -252,7 +250,7 @@ describe('ManyToManyRelation', () => {
         }
       });
     }).to.throwException(err => {
-      expect(err.message).to.equal(
+      expect(err.message).to.contain(
         "OwnerModel.relationMappings.testRelation: Cannot find module '/not/a/path/to/a/model'"
       );
     });
@@ -274,7 +272,7 @@ describe('ManyToManyRelation', () => {
         }
       });
     }).to.throwException(err => {
-      expect(err.message).to.equal(
+      expect(err.message).to.contain(
         'OwnerModel.relationMappings.testRelation: join.through must be an object that describes the join table. For example: {from: "JoinTable.someId", to: "JoinTable.someOtherId"}'
       );
     });
@@ -296,7 +294,7 @@ describe('ManyToManyRelation', () => {
         }
       });
     }).to.throwException(err => {
-      expect(err.message).to.equal(
+      expect(err.message).to.contain(
         'OwnerModel.relationMappings.testRelation: join.through must be an object that describes the join table. For example: {from: "JoinTable.someId", to: "JoinTable.someOtherId"}'
       );
     });
@@ -319,7 +317,7 @@ describe('ManyToManyRelation', () => {
         }
       });
     }).to.throwException(err => {
-      expect(err.message).to.equal(
+      expect(err.message).to.contain(
         'OwnerModel.relationMappings.testRelation: join.through.from must have format JoinTable.columnName. For example "JoinTable.someId" or in case of composite key ["JoinTable.a", "JoinTable.b"].'
       );
     });
@@ -342,7 +340,7 @@ describe('ManyToManyRelation', () => {
         }
       });
     }).to.throwException(err => {
-      expect(err.message).to.equal(
+      expect(err.message).to.contain(
         'OwnerModel.relationMappings.testRelation: join.through.to must have format JoinTable.columnName. For example "JoinTable.someId" or in case of composite key ["JoinTable.a", "JoinTable.b"].'
       );
     });
@@ -365,7 +363,7 @@ describe('ManyToManyRelation', () => {
         }
       });
     }).to.throwException(err => {
-      expect(err.message).to.equal(
+      expect(err.message).to.contain(
         'OwnerModel.relationMappings.testRelation: join.through `from` and `to` must point to the same join table.'
       );
     });
@@ -1480,3 +1478,19 @@ describe('ManyToManyRelation', () => {
     });
   }
 });
+
+function isSubclassOf(Constructor, SuperConstructor) {
+  if (!isFunction(SuperConstructor)) {
+    return false;
+  }
+
+  while (isFunction(Constructor)) {
+    if (Constructor === SuperConstructor) {
+      return true;
+    }
+
+    Constructor = Object.getPrototypeOf(Constructor);
+  }
+
+  return false;
+}
